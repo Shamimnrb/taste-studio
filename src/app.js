@@ -45,8 +45,8 @@ const stack = n => `"${n}", ${MONO.has(n) ? "ui-monospace, monospace" : SERIF.ha
 
 /* ---------------- state ---------------- */
 const STEPS = [
-  { id: "brief", fa: "بریف" }, { id: "dir", fa: "حال‌وهوا" }, { id: "type", fa: "تایپوگرافی" }, { id: "pal", fa: "رنگ" },
-  { id: "struct", fa: "ساختار" }, { id: "sig", fa: "عنصر امضا" }, { id: "dens", fa: "تراکم و حرکت" }, { id: "result", fa: "پرامپت" },
+  { id: "brief", fa: "Brief" }, { id: "dir", fa: "Direction" }, { id: "type", fa: "Type" }, { id: "pal", fa: "Color" },
+  { id: "struct", fa: "Structure" }, { id: "sig", fa: "Signature" }, { id: "dens", fa: "Density & motion" }, { id: "result", fa: "Prompt" },
 ];
 const EXAMPLE_BRIEF = {
   name: "YT Jobs", what: "A job board for the YouTube economy: creators hire editors, thumbnail designers and writers.",
@@ -65,7 +65,7 @@ const usedIds = () => { const u = new Set(); history.forEach(h => Object.values(
 function brandPair() {
   const f = S.brief.keepFonts.split(/[,،/+]/).map(s => s.trim()).filter(Boolean);
   if (!f.length) return null;
-  return { id: "brand", d: f[0], dw: 700, dc: "none", dt: "-0.02em", lh: 1, b: f[1] || f[0], m: f[2] || "IBM Plex Mono", fa: "فونت‌های فعلی برند شما", rule: "Brand fonts are fixed; express the new direction through size, spacing and layout." };
+  return { id: "brand", d: f[0], dw: 700, dc: "none", dt: "-0.02em", lh: 1, b: f[1] || f[0], m: f[2] || "IBM Plex Mono", fa: "Your current brand fonts", rule: "Brand fonts are fixed; express the new direction through size, spacing and layout." };
 }
 function brandPalette() {
   const hs = (S.brief.keepColors.match(/#?[0-9a-f]{6}\b/gi) || []).map(h => "#" + h.replace("#", "").toLowerCase());
@@ -76,7 +76,7 @@ function brandPalette() {
   const rest = hs.filter(h => h !== bg && h !== tx).sort((a, b) => sat(b) - sat(a));
   const ac = rest[0] || tx, ac2 = rest[1] || tx;
   const m = (a, b, t) => "#" + mixRGB(rgb(a), rgb(b), t).map(v => Math.round(v).toString(16).padStart(2, "0")).join("");
-  return { id: "brand", fa: "رنگ‌های فعلی برند شما", en: "brand palette", bg, sf: m(bg, tx, .06), tx, mu: m(tx, bg, .42), ln: m(bg, tx, .16), ac, acfg: contrast(ac, "#ffffff") > contrast(ac, "#111111") ? "#ffffff" : "#111111", ac2, avoid: "" };
+  return { id: "brand", fa: "Your current brand colors", en: "brand palette", bg, sf: m(bg, tx, .06), tx, mu: m(tx, bg, .42), ln: m(bg, tx, .16), ac, acfg: contrast(ac, "#ffffff") > contrast(ac, "#111111") ? "#ffffff" : "#111111", ac2, avoid: "" };
 }
 const findPair = id => id === "brand" ? brandPair() : PAIRS.find(p => p.id === id);
 const findPal = id => id === "brand" ? brandPalette() : PALETTES.find(p => p.id === id);
@@ -277,22 +277,22 @@ const F = (id, label, help, opts = {}) => `<div class="field"><label for="f-${id
   : `<input id="f-${id}" data-k="${id}" ${opts.ltr ? 'dir="ltr"' : ""} value="${esc(S.brief[id])}" placeholder="${esc(opts.ph || "")}">`}${help ? `<small>${help}</small>` : ""}</div>`;
 
 function renderBrief(main) {
-  main.innerHTML = `<div class="head"><div><h1>اول بگو چی داریم طراحی می‌کنیم.</h1><p>نمونه‌های بعدی با همین متن‌ها ساخته می‌شن، پس کوتاه و واقعی بنویس. متن‌ها رو انگلیسی بنویس چون داخل نمونه‌ها و پرامپت میان. فرم با مثال YT Jobs پر شده.</p></div></div>
+  main.innerHTML = `<div class="head"><div><h1>First, what are we designing?</h1><p>Every sample in the next rounds is built from this copy, so keep it short and real. The form is filled with the YT Jobs example.</p></div></div>
   <div class="brief"><div class="card">
-    <div class="row2">${F("name", "اسم محصول", "", { ltr: 1 })}${F("pageType", "نوع صفحه", "مثلاً landing page، portfolio، shop", { ltr: 1 })}</div>
-    ${F("what", "محصول در یک جمله", "", { ltr: 1, area: 1 })}
-    ${F("audience", "مخاطب", "", { ltr: 1 })}
-    <div class="row2">${F("headline", "تیتر نمونه", "داخل نمونه‌ها نشون داده می‌شه", { ltr: 1 })}${F("cta", "متن دکمه‌ی اصلی", "", { ltr: 1 })}</div>
-    ${F("items", "چند آیتم واقعی", "با ویرگول جدا کن؛ در فهرست‌ها و نوارها استفاده می‌شن", { ltr: 1 })}
-    <div class="section-label">حفظ برند (اختیاری)</div>
-    <div class="row2">${F("keepFonts", "فونت‌های فعلی", "مثلاً: Poppins, Inter (فونت‌های گوگل)", { ltr: 1, ph: "Display, Body" })}${F("keepColors", "رنگ‌های فعلی", "کدهای hex با ویرگول", { ltr: 1, ph: "#111111, #ffffff, #ff0033" })}</div>
-    ${F("notes", "نکته‌ی اضافه برای پرامپت", "هر چیزی که باید رعایت بشه", { area: 1 })}
+    <div class="row2">${F("name", "Product name", "", { ltr: 1 })}${F("pageType", "Page type", "e.g. landing page, portfolio, shop", { ltr: 1 })}</div>
+    ${F("what", "The product in one sentence", "", { ltr: 1, area: 1 })}
+    ${F("audience", "Audience", "", { ltr: 1 })}
+    <div class="row2">${F("headline", "Sample headline", "Shown in every sample", { ltr: 1 })}${F("cta", "Primary button text", "", { ltr: 1 })}</div>
+    ${F("items", "A few real items", "Comma-separated; used in lists and ribbons", { ltr: 1 })}
+    <div class="section-label">Keep your brand (optional)</div>
+    <div class="row2">${F("keepFonts", "Current fonts", "e.g. Poppins, Inter (Google Fonts)", { ltr: 1, ph: "Display, Body" })}${F("keepColors", "Current colors", "Hex codes, comma-separated", { ltr: 1, ph: "#111111, #ffffff, #ff0033" })}</div>
+    ${F("notes", "Extra notes for the prompt", "Anything the design must respect", { area: 1 })}
   </div>
-  <div class="card"><div class="section-label">پیش‌نمایش متن‌ها</div><div class="preview-mini" id="brief-prev" data-tok></div>
-    <ol class="how"><li><b>01</b><span>در هر مرحله ۶ نمونه‌ی بزرگ و زنده می‌بینی. روی چیزی که دوست داری بزن.</span></li>
-    <li><b>02</b><span>با «نه» چیزهایی رو که نمی‌خوای کنار بذار؛ در پرامپت به فهرست «نکن‌ها» اضافه می‌شن.</span></li>
-    <li><b>03</b><span>«نمونه‌های دیگه» گزینه‌های تازه میاره.</span></li>
-    <li><b>04</b><span>هر مرحله با انتخاب‌های قبلیت ساخته می‌شه، پس ترکیب واقعی رو می‌بینی.</span></li></ol></div></div>`;
+  <div class="card"><div class="section-label">Copy preview</div><div class="preview-mini" id="brief-prev" data-tok></div>
+    <ol class="how"><li><b>01</b><span>Each round shows six large, live samples. Click the one you like.</span></li>
+    <li><b>02</b><span>Use “No” to reject what you don’t want; rejections go into the prompt’s AVOID list.</span></li>
+    <li><b>03</b><span>“More options” brings fresh samples from the library.</span></li>
+    <li><b>04</b><span>Each round is drawn with your earlier picks, so you judge real combinations.</span></li></ol></div></div>`;
   const prev = $("#brief-prev");
   const paint = () => { const T = tokens(); prev._T = T; prev.innerHTML = heroHTML(T); mountAll(prev); };
   paint();
@@ -301,16 +301,16 @@ function renderBrief(main) {
 
 /* ---------------- rounds ---------------- */
 const ROUNDS = {
-  dir: { title: "کدوم حال‌وهوا به محصولت نزدیک‌تره؟", sub: "هر نمونه یه جهت کامله: رنگ، فونت، چیدمان و عنصر امضا. فقط به حس کلی نگاه کن؛ جزئیات رو در مرحله‌های بعد عوض می‌کنیم.",
+  dir: { title: "Which direction fits your product?", sub: "Each sample is a complete direction: color, type, layout and signature. Judge the overall feel; the details change in later rounds.",
     pool: () => DIRECTIONS, label: o => o.fa, desc: o => o.en, tok: o => tokens({ dir: o.id, type: o.pair, pal: o.pal, sig: o.sig }), render: heroHTML },
-  type: { title: "کدوم ترکیب فونت؟", sub: "همه با رنگ‌های جهتی که انتخاب کردی نشون داده می‌شن.",
+  type: { title: "Which type pairing?", sub: "All shown in the colors of the direction you picked.",
     pool: () => [brandPair(), ...PAIRS].filter(Boolean), label: o => o.fa, desc: o => `${o.d} + ${o.b}`, tok: o => tokens({ type: o.id, pal: S.picks.pal || dirOf(S.picks.dir)?.pal }), render: specimenHTML },
-  pal: { title: "کدوم پالت رنگ؟", sub: "پالت روی همون صفحه با فونت‌های انتخابیت اعمال شده.",
+  pal: { title: "Which palette?", sub: "Each palette is applied to the same page, with your type.",
     pool: () => [brandPalette(), ...PALETTES].filter(Boolean), label: o => o.fa, desc: o => o.en, tok: o => tokens({ pal: o.id }), render: heroHTML },
-  struct: { title: "صفحه چه ساختاری داشته باشه؟", sub: "ترتیب و تعداد بخش‌ها. این‌ها اسکلت صفحه‌ان، نه طراحی نهایی.", three: true,
+  struct: { title: "What structure should the page have?", sub: "The order and number of sections. These are skeletons, not final designs.", three: true,
     pool: () => STRUCTURES, label: o => o.fa, desc: o => o.desc, tok: () => tokens(), render: (T, o) => wireHTML(o, T) },
-  sig: { title: "عنصر امضای صفحه کدوم باشه؟", sub: "همون یک چیزی که صفحه رو به یاد موندنی می‌کنه. نمونه‌ها زنده‌ان.",
-    pool: () => SIGS, label: o => o.fa, desc: o => o.quiet ? "آرام، مناسب صفحه‌ی مینیمال" : "پرانرژی‌تر", tok: o => tokens({ sig: o.id }), render: sigStageHTML },
+  sig: { title: "Which signature element?", sub: "The one thing people will remember the page by. Samples are live.",
+    pool: () => SIGS, label: o => o.fa, desc: o => o.quiet ? "Quiet, suits minimal pages" : "More energetic", tok: o => tokens({ sig: o.id }), render: sigStageHTML },
 };
 
 function ensureShown(kind) {
@@ -330,11 +330,11 @@ function reshuffle(kind) {
 function optCard(kind, o, T, html, used) {
   const picked = S.picks[kind] === o.id, noped = (S.nope[kind] || []).includes(o.id);
   return `<article class="opt ${picked ? "picked" : ""} ${noped ? "noped" : ""}" data-id="${esc(o.id)}">
-    <span class="badge">انتخاب تو</span>
-    <button class="stage" data-act="pick" aria-label="انتخاب ${esc(ROUNDS[kind] ? ROUNDS[kind].label(o) : o.fa)}" data-tok>${html}</button>
-    <div class="meta"><div class="txt"><strong>${esc(ROUNDS[kind] ? ROUNDS[kind].label(o) : o.fa)}${used ? `<span class="used">قبلاً استفاده شده</span>` : ""}</strong><span>${esc(ROUNDS[kind] ? ROUNDS[kind].desc(o) : o.desc)}</span></div>
-    <button class="icon-btn nope ${noped ? "on" : ""}" data-act="nope" aria-pressed="${noped}">✕ نه</button>
-    <button class="icon-btn pick ${picked ? "on" : ""}" data-act="pick" aria-pressed="${picked}">${picked ? "✓ انتخاب شد" : "انتخاب"}</button></div></article>`;
+    <span class="badge">Your pick</span>
+    <button class="stage" data-act="pick" aria-label="Pick ${esc(ROUNDS[kind] ? ROUNDS[kind].label(o) : o.fa)}" data-tok>${html}</button>
+    <div class="meta"><div class="txt"><strong>${esc(ROUNDS[kind] ? ROUNDS[kind].label(o) : o.fa)}${used ? `<span class="used">used before</span>` : ""}</strong><span>${esc(ROUNDS[kind] ? ROUNDS[kind].desc(o) : o.desc)}</span></div>
+    <button class="icon-btn nope ${noped ? "on" : ""}" data-act="nope" aria-pressed="${noped}">✕ No</button>
+    <button class="icon-btn pick ${picked ? "on" : ""}" data-act="pick" aria-pressed="${picked}">${picked ? "✓ Picked" : "Pick"}</button></div></article>`;
 }
 
 function bindCards(main, kind, map) {
@@ -355,7 +355,7 @@ function refreshCards(main, kind) {
     const id = card.dataset.id, picked = S.picks[kind] === id, noped = (S.nope[kind] || []).includes(id);
     card.classList.toggle("picked", picked); card.classList.toggle("noped", noped);
     const pb = card.querySelector(".icon-btn.pick"), nb = card.querySelector(".icon-btn.nope");
-    pb.classList.toggle("on", picked); pb.setAttribute("aria-pressed", picked); pb.textContent = picked ? "✓ انتخاب شد" : "انتخاب";
+    pb.classList.toggle("on", picked); pb.setAttribute("aria-pressed", picked); pb.textContent = picked ? "✓ Picked" : "Pick";
     nb.classList.toggle("on", noped); nb.setAttribute("aria-pressed", noped);
   });
 }
@@ -363,7 +363,7 @@ function refreshCards(main, kind) {
 function renderRound(main, kind) {
   const R = ROUNDS[kind], ids = ensureShown(kind), pool = R.pool(), used = usedIds(), map = {};
   const cards = ids.map(id => pool.find(o => o.id === id)).filter(Boolean).map(o => { const T = R.tok(o); map[o.id] = T; return optCard(kind, o, T, R.render(T, o), used.has(o.id) && o.id !== "brand"); }).join("");
-  main.innerHTML = `<div class="head"><div><h1>${R.title}</h1><p>${R.sub}</p></div><div class="legend"><span><b>${pool.length}</b> گزینه در کتابخانه</span><span><b>${(S.nope[kind] || []).length}</b> کنار گذاشته شده</span></div></div>
+  main.innerHTML = `<div class="head"><div><h1>${R.title}</h1><p>${R.sub}</p></div><div class="legend"><span><b>${pool.length}</b> in the library</span><span><b>${(S.nope[kind] || []).length}</b> rejected</span></div></div>
     <div class="grid ${R.three ? "three" : ""}">${cards}</div>`;
   bindCards(main, kind, map); save();
 }
@@ -371,9 +371,9 @@ function renderRound(main, kind) {
 function renderDens(main) {
   const T = tokens(), used = usedIds();
   const card = (kind, o, html) => optCard(kind, o, T, html, used.has(o.id));
-  main.innerHTML = `<div class="head"><div><h1>چقدر شلوغ، و با چه حرکتی؟</h1><p>تراکم سقف همه‌چیز رو تعیین می‌کنه: تعداد بخش‌ها، فونت‌ها، رنگ‌ها و انیمیشن‌ها. روی نمونه‌های حرکت hover کن تا دوباره پخش بشن.</p></div></div>
-    <h2 class="sub-title">تراکم</h2><div class="grid three" id="g-dens">${DENSITIES.map(d => card("dens", d, densHTML(d, T))).join("")}</div>
-    <h2 class="sub-title">حرکت</h2><div class="grid three" id="g-motion">${MOTIONS.map(m => card("motion", m, motionHTML(m, T))).join("")}</div>`;
+  main.innerHTML = `<div class="head"><div><h1>How busy, and how should it move?</h1><p>Density sets the ceiling for everything: sections, typefaces, colors and animations. Hover a motion sample to replay it.</p></div></div>
+    <h2 class="sub-title">Density</h2><div class="grid three" id="g-dens">${DENSITIES.map(d => card("dens", d, densHTML(d, T))).join("")}</div>
+    <h2 class="sub-title">Motion</h2><div class="grid three" id="g-motion">${MOTIONS.map(m => card("motion", m, motionHTML(m, T))).join("")}</div>`;
   const map = {}; DENSITIES.concat(MOTIONS).forEach(o => map[o.id] = T);
   bindCards($("#g-dens"), "dens", map); bindCards($("#g-motion"), "motion", map);
   main.querySelectorAll("[data-motion]").forEach(el => {
@@ -466,31 +466,31 @@ function renderResult(main) {
   const st = STRUCTURES.find(x => x.id === S.picks.struct), dn = DENSITIES.find(x => x.id === S.picks.dens), mo = MOTIONS.find(x => x.id === S.picks.motion), sg = SIGS.find(x => x.id === T.sig);
   const chip = (i, l, v) => `<button class="chip" data-go="${i}"><small>${l}</small><strong>${esc(name(v))}</strong></button>`;
   const nopeCount = Object.values(S.nope).reduce((a, v) => a + (v || []).length, 0);
-  main.innerHTML = `<div class="head"><div><h1>این ترکیب توئه.</h1><p>همه‌ی انتخاب‌ها روی یه صفحه. روی هر کارت بزن تا همون مرحله رو عوض کنی. پایین‌تر پرامپت آماده‌ست.</p></div></div>
+  main.innerHTML = `<div class="head"><div><h1>This is your combination.</h1><p>Every pick on one page. Click a card to change that round. The prompt is ready below.</p></div></div>
   <div class="result">
     <div class="final-stage" data-tok id="final">${heroHTML(T)}</div>
-    <div class="chips">${chip(1, "حال‌وهوا", T.dir.fa)}${chip(2, "فونت", `${T.pair.d} + ${T.pair.b}`)}${chip(3, "رنگ", T.pal.fa)}${chip(4, "ساختار", st?.fa)}${chip(5, "عنصر امضا", sg?.fa)}${chip(6, "تراکم و حرکت", dn && mo ? `${dn.fa} · ${mo.fa}` : "")}
-      <div class="chip nopes"><small>کنار گذاشته‌شده‌ها</small><strong>${nopeCount ? `${nopeCount} مورد، در «نکن‌ها» آمده` : "هیچ"}</strong></div></div>
+    <div class="chips">${chip(1, "Direction", T.dir.fa)}${chip(2, "Type", `${T.pair.d} + ${T.pair.b}`)}${chip(3, "Color", T.pal.fa)}${chip(4, "Structure", st?.fa)}${chip(5, "Signature", sg?.fa)}${chip(6, "Density & motion", dn && mo ? `${dn.fa} · ${mo.fa}` : "")}
+      <div class="chip nopes"><small>Rejected</small><strong>${nopeCount ? `${nopeCount}, listed under AVOID` : "None"}</strong></div></div>
     <div class="prompt-box">
       <div class="prompt-tools">
-        ${sample ? `<button class="btn accent" id="refine">${S.promptSource === "claude" ? "دوباره با Claude" : "صیقل نهایی با Claude"}</button><button class="btn" id="stop" hidden>توقف</button>` : ""}
-        <button class="btn primary" id="copy">کپی پرامپت</button>
-        ${downloads ? `<button class="btn" id="dl">دانلود .md</button>` : ""}
-        <button class="btn" id="keep">ذخیره در تاریخچه</button>
-        ${S.promptSource === "claude" ? `<button class="btn" id="reset">برگشت به نسخه‌ی پایه</button>` : ""}
-        <span class="note" id="pnote">${S.promptSource === "claude" ? "نسخه‌ی صیقل‌خورده با Claude. می‌تونی مستقیم ویرایشش کنی." : sample ? "این نسخه‌ی پایه از انتخاب‌هات ساخته شده. Claude می‌تونه با حفظ همه‌ی مقادیر، متن بخش‌ها و جزئیات رو برای محصولت کامل کنه (از حساب خودت استفاده می‌کنه)." : "این پرامپت از انتخاب‌هات ساخته شده. کپی کن و به Claude بده."}</span>
+        ${sample ? `<button class="btn accent" id="refine">${S.promptSource === "claude" ? "Polish again with Claude" : "Polish with Claude"}</button><button class="btn" id="stop" hidden>Stop</button>` : ""}
+        <button class="btn primary" id="copy">Copy prompt</button>
+        ${downloads ? `<button class="btn" id="dl">Download .md</button>` : ""}
+        <button class="btn" id="keep">Save to history</button>
+        ${S.promptSource === "claude" ? `<button class="btn" id="reset">Back to base version</button>` : ""}
+        <span class="note" id="pnote">${S.promptSource === "claude" ? "Polished by Claude. You can edit it directly." : sample ? "Base version built from your picks. Claude can complete section copy and details for your product while keeping every chosen value (uses your own Claude account)." : "Built from your picks. Copy it and give it to Claude."}</span>
       </div>
-      <label for="ptext" class="section-label">پرامپت</label>
+      <label for="ptext" class="section-label">Prompt</label>
       <textarea class="prompt" id="ptext" spellcheck="false">${esc(S.prompt)}</textarea>
     </div>
-    <div><h2 class="sub-title">تاریخچه</h2><div class="history" id="hist"></div></div>
+    <div><h2 class="sub-title">History</h2><div class="history" id="hist"></div></div>
   </div>`;
   $("#final")._T = T; mountAll(main);
   main.querySelectorAll("[data-go]").forEach(c => c.onclick = () => go(+c.dataset.go));
   const ta = $("#ptext"); ta.oninput = () => { S.prompt = ta.value; if (S.promptSource === "local") S.promptSource = "edited"; save(); };
   $("#copy").onclick = () => copy(ta.value, ta);
-  $("#keep").onclick = () => { history.unshift({ ts: Date.now(), name: S.brief.name, title: `${T.dir.fa} · ${T.pal.fa}`, prompt: ta.value, picks: { ...S.picks } }); history = history.slice(0, 30); store.set("history", history); toast("در تاریخچه ذخیره شد"); renderHistory(); };
-  if ($("#dl")) $("#dl").onclick = async () => { try { await downloads.save({ filename: `${(S.brief.name || "design").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-prompt.md`, data: ta.value }); toast("ذخیره شد"); } catch (e) { if (e?.code !== "declined") toast("دانلود در این نما ممکن نیست؛ از «کپی» استفاده کن"); } };
+  $("#keep").onclick = () => { history.unshift({ ts: Date.now(), name: S.brief.name, title: `${T.dir.fa} · ${T.pal.fa}`, prompt: ta.value, picks: { ...S.picks } }); history = history.slice(0, 30); store.set("history", history); toast("Saved to history"); renderHistory(); };
+  if ($("#dl")) $("#dl").onclick = async () => { try { await downloads.save({ filename: `${(S.brief.name || "design").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-prompt.md`, data: ta.value }); toast("Saved"); } catch (e) { if (e?.code !== "declined") toast("Download isn’t available here — use Copy"); } };
   if ($("#reset")) $("#reset").onclick = () => { S.prompt = buildPrompt(); S.promptSource = "local"; save(); render(); };
   if ($("#refine")) $("#refine").onclick = refine;
   renderHistory();
@@ -499,7 +499,7 @@ function renderResult(main) {
 async function refine() {
   const ta = $("#ptext"), note = $("#pnote"), btn = $("#refine"), stop = $("#stop");
   const draft = ta.value;
-  abortCtl = new AbortController(); btn.disabled = true; stop.hidden = false; note.textContent = "Claude در حال فکر کردنه…";
+  abortCtl = new AbortController(); btn.disabled = true; stop.hidden = false; note.textContent = "Claude is thinking…";
   stop.onclick = () => abortCtl?.abort();
   const instr = `You are a senior art director. A designer picked every visual choice below by looking at live samples. Rewrite the DRAFT into the final design prompt for an AI that builds web pages.
 
@@ -522,13 +522,13 @@ ${S.brief.notes ? "Designer notes: " + S.brief.notes : ""}
 DRAFT
 ${draft}`;
   try {
-    const { text, truncated } = await sample(instr, { signal: abortCtl.signal, cache: false, onText: ({ text }) => { ta.value = text; note.textContent = "Claude در حال نوشتنه…"; } });
+    const { text, truncated } = await sample(instr, { signal: abortCtl.signal, cache: false, onText: ({ text }) => { ta.value = text; note.textContent = "Claude is writing…"; } });
     ta.value = text; S.prompt = text; S.promptSource = "claude"; save();
-    note.textContent = truncated ? "جواب نیمه‌کاره موند؛ دوباره امتحان کن." : "تمومه. می‌تونی مستقیم ویرایشش کنی.";
+    note.textContent = truncated ? "The answer was cut short; try again." : "Done. You can edit it directly.";
     render();
   } catch (e) {
     if (e?.text) ta.value = e.text; else ta.value = draft;
-    const msg = { cancelled: "متوقف شد.", not_granted: "اجازه‌ی استفاده از Claude داده نشد؛ نسخه‌ی پایه رو کپی کن.", rate_limited: "فعلاً محدودیت استفاده؛ کمی بعد دوباره امتحان کن.", refused: "Claude این درخواست رو انجام نداد؛ نسخه‌ی پایه برگشت.", session_expired: "دوباره وارد حساب شو." }[e?.code] || "ارتباط قطع شد؛ دوباره امتحان کن.";
+    const msg = { cancelled: "Stopped.", not_granted: "Claude access wasn’t allowed — copy the base version instead.", rate_limited: "Usage limit reached for now — try again later.", refused: "Claude declined this request; the base version is back.", session_expired: "Please sign in again." }[e?.code] || "The connection dropped — try again.";
     note.textContent = msg; if (e?.code === "refused") ta.value = draft;
     if (e?.code === "not_granted" || e?.code === "sampling_disabled") { sample = null; }
   } finally { btn.disabled = false; stop.hidden = true; abortCtl = null; }
@@ -536,20 +536,20 @@ ${draft}`;
 
 function renderHistory() {
   const box = $("#hist"); if (!box) return;
-  if (!history.length) { box.innerHTML = `<div class="empty">هنوز چیزی ذخیره نشده. پرامپت‌هایی که نگه می‌داری اینجا میان و در دورهای بعد گزینه‌های تکراری علامت می‌خورن.</div>`; return; }
-  box.innerHTML = history.map((h, i) => `<div class="hist-item"><div class="t"><strong>${esc(h.name)} — ${esc(h.title)}</strong><span>${new Date(h.ts).toLocaleString("fa-IR")}</span></div>
-    <button class="icon-btn" data-h="copy" data-i="${i}">کپی</button><button class="icon-btn" data-h="load" data-i="${i}">باز کردن</button><button class="icon-btn" data-h="del" data-i="${i}" aria-label="حذف">✕</button></div>`).join("");
+  if (!history.length) { box.innerHTML = `<div class="empty">Nothing saved yet. Prompts you keep appear here, and options you used before are marked in later rounds.</div>`; return; }
+  box.innerHTML = history.map((h, i) => `<div class="hist-item"><div class="t"><strong>${esc(h.name)} — ${esc(h.title)}</strong><span>${new Date(h.ts).toLocaleString("en-GB")}</span></div>
+    <button class="icon-btn" data-h="copy" data-i="${i}">Copy</button><button class="icon-btn" data-h="load" data-i="${i}">Open</button><button class="icon-btn" data-h="del" data-i="${i}" aria-label="Delete">✕</button></div>`).join("");
   box.onclick = e => { const b = e.target.closest("[data-h]"); if (!b) return; const h = history[+b.dataset.i];
     if (b.dataset.h === "copy") copy(h.prompt);
-    if (b.dataset.h === "load") { S.prompt = h.prompt; S.promptSource = "claude"; S.picks = { ...h.picks }; save(); render(); toast("بارگذاری شد"); }
+    if (b.dataset.h === "load") { S.prompt = h.prompt; S.promptSource = "claude"; S.picks = { ...h.picks }; save(); render(); toast("Loaded"); }
     if (b.dataset.h === "del") { history.splice(+b.dataset.i, 1); store.set("history", history); renderHistory(); } };
 }
 
 /* ---------------- chrome ---------------- */
 function copy(text, ta) {
-  const done = () => toast("کپی شد");
-  try { navigator.clipboard.writeText(text).then(done, () => { if (ta) { ta.select(); toast("متن انتخاب شد؛ Ctrl/⌘+C بزن"); } }); }
-  catch { if (ta) { ta.select(); toast("متن انتخاب شد؛ Ctrl/⌘+C بزن"); } }
+  const done = () => toast("Copied");
+  try { navigator.clipboard.writeText(text).then(done, () => { if (ta) { ta.select(); toast("Text selected — press Ctrl/⌘+C"); } }); }
+  catch { if (ta) { ta.select(); toast("Text selected — press Ctrl/⌘+C"); } }
 }
 let toastT; function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 2200); }
 
@@ -570,12 +570,12 @@ function renderSteps() {
 }
 function renderBar() {
   const id = STEPS[S.step].id, done = stepDone(S.step), isRound = !!ROUNDS[id];
-  const status = id === "brief" ? "اسم محصول کافیه تا شروع کنیم." : id === "result" ? "هر وقت خواستی، برگرد و یه مرحله رو عوض کن." : id === "dens" ? (done ? "عالی، بریم سراغ پرامپت." : "یکی از تراکم‌ها و یکی از حرکت‌ها رو انتخاب کن.") : done ? "انتخاب شد. می‌تونی بری مرحله‌ی بعد." : "روی نمونه‌ای که دوست داری بزن.";
+  const status = id === "brief" ? "A product name is enough to start." : id === "result" ? "Go back and change any round whenever you like." : id === "dens" ? (done ? "Great — on to the prompt." : "Pick one density and one motion style.") : done ? "Picked. You can move to the next round." : "Click the sample you like.";
   $("#bar").innerHTML = `<div class="wrap"><span class="status">${status}</span>
-    ${S.step > 0 ? `<button class="btn" id="b-back">→ قبلی</button>` : ""}
-    ${isRound ? `<button class="btn" id="b-shuf">نمونه‌ی دیگه</button>` : ""}
-    ${isRound && !done ? `<button class="btn" id="b-rand">شانسی</button>` : ""}
-    ${id === "result" ? `<button class="btn" id="b-new">شروع دوباره</button>` : `<button class="btn primary" id="b-next" ${done ? "" : "disabled"}>${STEPS[S.step + 1].id === "result" ? "ساخت پرامپت" : "بعدی"} ←</button>`}</div>`;
+    ${S.step > 0 ? `<button class="btn" id="b-back">← Back</button>` : ""}
+    ${isRound ? `<button class="btn" id="b-shuf">More options</button>` : ""}
+    ${isRound && !done ? `<button class="btn" id="b-rand">Surprise me</button>` : ""}
+    ${id === "result" ? `<button class="btn" id="b-new">Start over</button>` : `<button class="btn primary" id="b-next" ${done ? "" : "disabled"}>${STEPS[S.step + 1].id === "result" ? "Build prompt" : "Next"} →</button>`}</div>`;
   $("#b-back") && ($("#b-back").onclick = () => go(S.step - 1));
   $("#b-next") && ($("#b-next").onclick = () => go(S.step + 1));
   $("#b-shuf") && ($("#b-shuf").onclick = () => reshuffle(id));
@@ -593,6 +593,6 @@ function render() {
   renderBar();
 }
 
-loadFont("Vazirmatn"); loadFont("Geist Mono");
+loadFont("Hanken Grotesk"); loadFont("Geist Mono");
 render();
 })();

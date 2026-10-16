@@ -17,7 +17,7 @@ body = (shell
 (ROOT / "dist" / "artifact.html").write_text(body, encoding="utf-8")
 
 page = f"""<!doctype html>
-<html lang="fa" dir="rtl">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">

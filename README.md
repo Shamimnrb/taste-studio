@@ -4,8 +4,6 @@
 
 Taste Studio walks a designer through seven rounds of large, live design samples. Each round is rendered with the choices made so far, so you always judge real combinations rather than abstract swatches. At the end your picks — and everything you rejected — become a precise design prompt with exact fonts, hex colors, sizes, timings and a density budget.
 
-> فارسی: [پایین صفحه](#فارسی)
-
 ## How it works
 
 | Round | What you see | What it decides |
@@ -68,14 +66,3 @@ Install in the Claude app: zip each folder (the folder at the zip root) and uplo
 
 No license file yet — choose one before accepting outside contributions.
 
----
-
-## فارسی
-
-**استودیو سلیقه**: سلیقه‌ی طراحی رو با دیدن پیدا کن، نه با توصیف. بعد یه پرامپت دقیق بگیر که هوش مصنوعی بتونه ازش صفحه بسازه.
-
-در هفت مرحله نمونه‌های بزرگ و زنده می‌بینی: حال‌وهوا، فونت، رنگ، ساختار صفحه، عنصر امضا، تراکم و حرکت. هر مرحله با انتخاب‌های قبلیت ساخته می‌شه، پس همیشه ترکیب واقعی رو می‌بینی. چیزهایی که رد می‌کنی به فهرست «نکن‌ها»ی پرامپت اضافه می‌شن. آخر کار پرامپت با فونت‌ها، کدهای رنگ، اندازه‌ها و زمان‌بندی دقیق ساخته می‌شه.
-
-**اجرا:** فایل `index.html` رو در مرورگر باز کن. برای تغییر کد، فایل‌های `src/` رو ویرایش کن و `python3 build.py` رو اجرا کن.
-
-**اسکیل‌ها:** پوشه‌ی `skills/` دو اسکیل همراه داره: پرامپت‌ساز (design-prompt) و دیزاین سیستم (design-system).
