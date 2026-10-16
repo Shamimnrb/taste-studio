@@ -1,0 +1,235 @@
+{
+  "_note": "Each axis is sampled independently. Add, remove or rewrite options freely — richer lists mean more variety. Keys starting with _ are ignored by the sampler.",
+  "axes": {
+    "density": [
+      "ultra-minimal: 3-4 sections, ONE typeface family, one accent used at most 3 times, no animated signature (the signature is typographic or a single static mark)",
+      "minimal: 4-5 sections, two typefaces, one accent, one quiet signature element, motion only on interaction",
+      "balanced: 5-7 sections, one signature graphic, restrained motion",
+      "maximal: 7+ sections, layered signature graphic, rich motion and texture"
+    ],
+    "ground": [
+      "warm light paper",
+      "pure white",
+      "near-black",
+      "mid-tone (stone, grey, clay)",
+      "a saturated color field as the page background"
+    ],
+    "page_structure": [
+      "manifesto: one strong statement, one proof row, one call to action",
+      "index-first: the page IS a list/table of the real content (e.g. live listings) with a short intro above",
+      "two doors: split immediately into the two audiences, each with its own short path",
+      "question-led: the headline is a question, each section answers part of it",
+      "classic: hero, value, how it works, proof, FAQ, call to action",
+      "three-chapter scroll story",
+      "search-first: the search/filter bar is the hero"
+    ],
+    "movement": [
+      "dark editorial poster (Swiss grid meets gig poster)",
+      "neo-brutalist web (hard shadows, raw borders, loud blocks)",
+      "risograph zine (overprint, misregistration, two spot inks)",
+      "Japanese minimal print (vast whitespace, tiny type, one red mark)",
+      "Bauhaus geometry (primary shapes, strict modular composition)",
+      "70s psychedelic print (warm saturated waves, groovy display type)",
+      "Y2K chrome and gloss (liquid metal, bevels, techno type)",
+      "terminal / CRT interface (phosphor glow, scanlines, mono everything)",
+      "luxury fashion magazine (high-contrast serif, huge margins, cream paper)",
+      "museum wayfinding signage (pictograms, numbered zones, color codes)",
+      "scientific journal / technical manual (figures, captions, footnotes)",
+      "90s rave flyer (stretched type, acid colors, sticker chaos)",
+      "architectural blueprint (cyan lines, dimension marks, drafting labels)",
+      "sports broadcast graphics (scoreboards, tickers, italic condensed type)",
+      "letterpress stationery (deboss feel, ink spread, warm paper)",
+      "Soviet constructivist poster (diagonals, red and black, photomontage blocks)"
+    ],
+    "mood": [
+      "confident and loud",
+      "calm and precise",
+      "playful and irreverent",
+      "mysterious and slow",
+      "rebellious and raw",
+      "warm and human",
+      "clinical and exact",
+      "nostalgic",
+      "premium and restrained",
+      "urgent and kinetic"
+    ],
+    "palette_strategy": [
+      "one acid accent on near-black, everything else greyscale",
+      "warm off-white paper + black ink + ONE spot color",
+      "duotone: two inks only, overlaps create a third",
+      "full-saturation clash of three brights on white",
+      "monochrome in a single hue across 7 tints and shades",
+      "deep jewel tones on dark (emerald, oxblood, ink blue)",
+      "sun-faded print: muted pastels with one dark anchor",
+      "phosphor: one glowing color on pure black",
+      "earth tones: clay, olive, sand, charcoal",
+      "safety colors: hazard orange, signal yellow, black"
+    ],
+    "type_strategy": [
+      "giant heavy wide display in ALL CAPS + neutral grotesk body + mono labels",
+      "high-contrast didone serif display, italic accents + clean sans body",
+      "ultra-condensed display stacked tall + humanist sans body",
+      "a single typeface family used at extreme weight/size contrast",
+      "mono everywhere, hierarchy only from size and inverse blocks",
+      "soft rounded display + friendly geometric body",
+      "expressive serif headlines set tight + small caps labels",
+      "techno / squared display + wide letter-spaced labels"
+    ],
+    "signature_graphic": [
+      "pixel-grid gradient panels on <canvas>, quantized cells, slow noise drift",
+      "halftone dot field that reacts to the cursor",
+      "ASCII-art rendering of a shape, characters shimmering",
+      "giant outlined type that fills with color on scroll",
+      "marquee ribbons crossing the page at angles",
+      "generative contour/topographic lines, slowly morphing",
+      "stacked index cards / tickets with perforated edges",
+      "oversized numbers as graphic elements (01, 02, 03) cropped by the viewport",
+      "dithered (1-bit Bayer) images and gradients",
+      "rotating 3D text ring built with CSS transforms",
+      "grain + misregistered color offset on every block",
+      "data-like bar/sparkline motifs used as decoration",
+      "cut-paper shapes with hard drop shadows",
+      "a single blob/gooey shape that morphs between sections"
+    ],
+    "layout_archetype": [
+      "asymmetric split hero: giant headline left, tall poster card right",
+      "12-column magazine spread with pull quotes and captions",
+      "one enormous headline per screen, slow vertical narrative",
+      "bento grid of deliberately unequal tiles",
+      "left fixed index column, content scrolls on the right",
+      "horizontal-scroll chapters inside vertical page",
+      "centered single column like a printed letter, wide margins",
+      "dashboard / control panel with modules and readouts",
+      "full-bleed sections alternating color blocks"
+    ],
+    "motion_personality": [
+      "slow and calm: long eases, nothing faster than 600ms",
+      "snappy with small overshoot pops",
+      "mechanical: stepped timing, ticks, counters",
+      "glitchy: brief offsets, RGB split on hover",
+      "almost none — print-like; only focus and hover states",
+      "scroll-driven: elements reveal and scale with scroll position",
+      "typographic: letters roll, split, and re-assemble"
+    ],
+    "texture": [
+      "visible 1px layout grid",
+      "film grain overlay",
+      "hairline rules everywhere",
+      "paper fiber / noise",
+      "scanlines",
+      "dot grid",
+      "none — perfectly flat",
+      "registration marks and crop marks"
+    ],
+    "wildcard_rule": [
+      "no border-radius anywhere",
+      "every number on the page is set in tabular mono",
+      "one element is set vertically (rotated 90°)",
+      "the accent color appears at most 5 times on the whole page",
+      "every section has a numbered index label",
+      "all images replaced by generative graphics — zero photos",
+      "headline sizes jump dramatically: nothing between 24px and 96px",
+      "buttons are plain underlined text, no filled buttons except one",
+      "content is annotated like a diagram with leader lines",
+      "the footer is the most dramatic part of the page"
+    ]
+  },
+  "fonts": {
+    "display": [
+      "Unbounded",
+      "Syne",
+      "Bricolage Grotesque",
+      "Space Grotesk",
+      "Archivo Black",
+      "Anton",
+      "Bebas Neue",
+      "Big Shoulders Display",
+      "Fraunces",
+      "Playfair Display",
+      "DM Serif Display",
+      "Instrument Serif",
+      "Young Serif",
+      "Bodoni Moda",
+      "Gloock",
+      "Rubik Mono One",
+      "Krona One",
+      "Familjen Grotesk",
+      "Darker Grotesque",
+      "Climate Crisis",
+      "Bowlby One",
+      "Tilt Warp",
+      "Shrikhand",
+      "Abril Fatface",
+      "Chakra Petch",
+      "Orbitron",
+      "Major Mono Display",
+      "Six Caps",
+      "Antonio",
+      "Cormorant Garamond",
+      "Italiana",
+      "Bagel Fat One",
+      "Dela Gothic One",
+      "Michroma",
+      "Red Hat Display"
+    ],
+    "body": [
+      "Archivo",
+      "Inter Tight",
+      "Manrope",
+      "DM Sans",
+      "IBM Plex Sans",
+      "Work Sans",
+      "Karla",
+      "Public Sans",
+      "Figtree",
+      "Schibsted Grotesk",
+      "Hanken Grotesk",
+      "Source Serif 4",
+      "Newsreader",
+      "Literata",
+      "Libre Franklin",
+      "Onest",
+      "Geist"
+    ],
+    "mono": [
+      "JetBrains Mono",
+      "IBM Plex Mono",
+      "Space Mono",
+      "DM Mono",
+      "Fragment Mono",
+      "Martian Mono",
+      "Geist Mono",
+      "Azeret Mono",
+      "Red Hat Mono"
+    ]
+  },
+  "quiet_options": {
+    "_note": "When the sampled density is minimal or ultra-minimal, these axes are drawn from these quieter lists instead.",
+    "signature_graphic": [
+      "one oversized typographic glyph or letter as the only graphic",
+      "a hairline rule system that draws in on scroll",
+      "a single color block that changes size or position per section",
+      "oversized numbers as graphic elements (01, 02, 03) cropped by the viewport",
+      "one precise live data element (a counter, a clock, a latest-posted line) given hero treatment",
+      "generous whitespace with one small, exact illustration in a single line weight"
+    ],
+    "texture": [
+      "none — perfectly flat",
+      "hairline rules everywhere",
+      "paper fiber / noise",
+      "dot grid"
+    ],
+    "motion_personality": [
+      "almost none — print-like; only focus and hover states",
+      "slow and calm: long eases, nothing faster than 600ms",
+      "typographic: letters roll, split, and re-assemble"
+    ],
+    "wildcard_rule": [
+      "no border-radius anywhere",
+      "the accent color appears at most 5 times on the whole page",
+      "buttons are plain underlined text, no filled buttons except one",
+      "headline sizes jump dramatically: nothing between 24px and 96px",
+      "every number on the page is set in tabular mono"
+    ]
+  }
+}
