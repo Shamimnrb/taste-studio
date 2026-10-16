@@ -45,7 +45,7 @@ const stack = n => `"${n}", ${MONO.has(n) ? "ui-monospace, monospace" : SERIF.ha
 
 /* ---------------- state ---------------- */
 const STEPS = [
-  { id: "brief", fa: "Brief" }, { id: "dir", fa: "Direction" }, { id: "type", fa: "Type" }, { id: "pal", fa: "Color" },
+  { id: "brief", fa: "Brief" }, { id: "discover", fa: "Discover" }, { id: "dir", fa: "Direction" }, { id: "type", fa: "Type" }, { id: "pal", fa: "Color" },
   { id: "struct", fa: "Structure" }, { id: "sig", fa: "Signature" }, { id: "dens", fa: "Density & motion" }, { id: "result", fa: "Prompt" },
 ];
 const EXAMPLE_BRIEF = {
@@ -54,9 +54,10 @@ const EXAMPLE_BRIEF = {
   headline: "Hire the people behind great channels", cta: "Post a job",
   items: "Video editor, Thumbnail designer, Scriptwriter, Channel manager, Shorts clipper", keepFonts: "", keepColors: "", notes: "",
 };
-const fresh = () => ({ step: 0, maxStep: 0, brief: { ...EXAMPLE_BRIEF }, picks: {}, nope: {}, shown: {}, prompt: "", promptSource: "" });
+const DISCOVER0 = { sliders: {}, place: null, feel: [], context: null, device: null, who: "", must: "", never: "", love: "", tired: "", remember: true, thesis: "", thesisSource: "" };
+const fresh = () => ({ step: 0, maxStep: 0, brief: { ...EXAMPLE_BRIEF }, discover: { ...DISCOVER0, ...store.get("designer", {}) }, picks: {}, nope: {}, shown: {}, prompt: "", promptSource: "" });
 const stored = store.get("session", {});
-let S = Object.assign(fresh(), stored, { brief: { ...EXAMPLE_BRIEF, ...(stored.brief || {}) }, picks: stored.picks || {}, nope: stored.nope || {}, shown: stored.shown || {} });
+let S = Object.assign(fresh(), stored, { brief: { ...EXAMPLE_BRIEF, ...(stored.brief || {}) }, discover: { ...DISCOVER0, ...store.get("designer", {}), ...(stored.discover || {}) }, picks: stored.picks || {}, nope: stored.nope || {}, shown: stored.shown || {} });
 const save = () => store.set("session", S);
 let history = store.get("history", []);
 const usedIds = () => { const u = new Set(); history.forEach(h => Object.values(h.picks || {}).forEach(v => u.add(v))); return u; };
@@ -208,7 +209,7 @@ function mountSig(el, id, T) {
     dither() {
       const st = canvasIn(el), off = document.createElement("canvas"), oc = off.getContext("2d");
       const M = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-      const draw = t => { const { ctx, w, h } = st; if (!w) return; const px = 4, W = Math.ceil(w / px), H = Math.ceil(h / px); off.width = W; off.height = H;
+      const draw = t => { const { ctx, w, h } = st; if (!w || h < 4) return; const px = 4, W = Math.ceil(w / px), H = Math.ceil(h / px); off.width = W; off.height = H;
         const img = oc.createImageData(W, H), cx = W * (.5 + .3 * Math.sin(t * .0003)), cy = H * (.5 + .25 * Math.cos(t * .00023)), R = Math.max(W, H) * .7;
         for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const d = Math.hypot(x - cx, y - cy) / R, v = 1 - d + (noise(x * .05, y * .05, t * .0002) - .5) * .4;
           const on = v > (M[(y & 3) * 4 + (x & 3)] + .5) / 16, c = on ? A : SF, k = (y * W + x) * 4; img.data[k] = c[0]; img.data[k + 1] = c[1]; img.data[k + 2] = c[2]; img.data[k + 3] = 255; }
@@ -225,7 +226,7 @@ function mountSig(el, id, T) {
       const L = esc((b.name[0] || "A").toUpperCase());
       el.innerHTML = `<div class="sg-glyph" style="color:${p.ac};mix-blend-mode:${dark ? "screen" : "multiply"};font-size:min(80cqh,95%)">${L}</div><div class="sg-glyph" style="color:${p.ac2};mix-blend-mode:${dark ? "screen" : "multiply"};transform:translate(6px,4px)">${L}</div>`;
       el.querySelectorAll(".sg-glyph").forEach(g => g.style.fontSize = (el.clientHeight * .95 || 300) + "px");
-      const st = canvasIn(el, s => { const { ctx, w, h } = s; const im = ctx.createImageData(Math.max(1, w | 0), Math.max(1, h | 0)); for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 22; } ctx.putImageData(im, 0, 0); });
+      const st = canvasIn(el, s => { const { ctx, w, h } = s; if (w < 1 || h < 1) return; const im = ctx.createImageData(Math.max(1, w | 0), Math.max(1, h | 0)); for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 22; } ctx.putImageData(im, 0, 0); });
       st.cv.style.mixBlendMode = "overlay";
     },
     outline() {
@@ -299,6 +300,95 @@ function renderBrief(main) {
   let tm; main.querySelectorAll("[data-k]").forEach(inp => inp.addEventListener("input", () => { S.brief[inp.dataset.k] = inp.value; save(); clearTimeout(tm); tm = setTimeout(paint, 300); }));
 }
 
+
+/* ---------------- step: discover ---------------- */
+const D = () => S.discover;
+function discoverTarget() {
+  const d = D(), t = [], w = [];
+  SLIDERS.forEach((s, i) => { const v = d.sliders[s.id]; t[i] = 0; w[i] = 0; if (typeof v === "number") { t[i] += v; w[i] += 1; } });
+  const pl = PLACES.find(p => p.id === d.place);
+  if (pl) pl.vec.forEach((v, i) => { t[i] += v * .6; w[i] += .6; });
+  if (!w.some(Boolean)) return null;
+  return t.map((v, i) => w[i] ? { v: v / w[i], w: w[i] } : null);
+}
+function dirScore(id) {
+  const tg = discoverTarget(), vec = DIR_VEC[id]; if (!tg || !vec) return 0;
+  let s = 0; tg.forEach((x, i) => { if (x) s -= x.w * (vec[i] - x.v) ** 2; }); return s;
+}
+const discoverSig = () => JSON.stringify([D().sliders, D().place]);
+const sliderWords = () => SLIDERS.map(s => { const v = D().sliders[s.id]; if (typeof v !== "number" || v === 0) return null;
+  return `${Math.abs(v) === 2 ? "strongly" : "leans"} ${(v < 0 ? s.left : s.right).toLowerCase()}`; }).filter(Boolean);
+function localThesis() {
+  const d = D(), b = S.brief, pl = PLACES.find(p => p.id === d.place), words = sliderWords();
+  const parts = [];
+  parts.push(`${b.name || "The product"} should make ${d.who || b.audience || "its visitors"} feel ${d.feel.length ? d.feel.map(f => f.toLowerCase()).join(" and ") : "clear about what to do"} within five seconds${d.context ? `, arriving ${d.context.toLowerCase()}` : ""}.`);
+  if (words.length || pl) parts.push(`Its character ${words.length ? `is ${words.join(", ")}` : "is defined by restraint"}${pl ? `, with the quality of ${pl.name.toLowerCase()} (${pl.desc.toLowerCase()}) as a feeling, never as imagery` : ""}.`);
+  parts.push(`Everything on the page serves one action: ${d.must || b.cta || "the primary call to action"}.`);
+  return parts.join(" ");
+}
+function renderDiscover(main) {
+  const d = D(), b = S.brief;
+  if (!d.who) d.who = b.audience; if (!d.must) d.must = b.cta;
+  const seg = s => `<div class="sl" role="group" aria-label="${s.left} to ${s.right}"><span class="l">${s.left}</span><div class="seg">${[-2, -1, 0, 1, 2].map(v =>
+    `<button data-sl="${s.id}" data-v="${v}" aria-pressed="${d.sliders[s.id] === v}" aria-label="${v === 0 ? "In between" : (Math.abs(v) === 2 ? "Strongly " : "Somewhat ") + (v < 0 ? s.left : s.right)}" style="--d:${[16, 11, 6, 11, 16][v + 2]}px"></button>`).join("")}</div><span class="r">${s.right}</span></div>`;
+  const chips = (key, list, multi) => `<div class="chipset" data-chips="${key}" data-multi="${multi ? 1 : 0}">${list.map(x => `<button data-val="${esc(x)}" aria-pressed="${multi ? d[key].includes(x) : d[key] === x}">${esc(x)}</button>`).join("")}</div>`;
+  main.innerHTML = `<div class="head"><div><h1>Before the visuals: what is this, and who is it for?</h1><p>Abstract questions, quick answers. They rank the samples you will see next and give the prompt a point of view. Everything here is optional.</p></div></div>
+  <div class="disc">
+    <section class="card"><h2>The character</h2><p>Where does ${esc(b.name || "the product")} sit between each pair? Leave a row untouched if it doesn't matter.</p><div class="sliders">${SLIDERS.map(seg).join("")}</div></section>
+    <section class="card"><h2>If it were a place</h2><p>Pick the place whose atmosphere is closest. This shapes the feeling, not the imagery.</p>
+      <div class="tiles">${PLACES.map(p => `<button class="tile-btn" data-place="${p.id}" aria-pressed="${d.place === p.id}"><strong>${p.name}</strong><span>${p.desc}</span></button>`).join("")}</div></section>
+    <section class="card"><h2>The first five seconds</h2><p>What should a visitor feel before they read anything? Pick up to two.</p>${chips("feel", FEELINGS, true)}</section>
+    <section class="card"><h2>The audience moment</h2><p>Who arrives, in what situation, and what must they do.</p>
+      <label class="qlabel" for="q-who">Who arrives</label><div class="field"><input id="q-who" data-q="who" value="${esc(d.who)}"></div>
+      <span class="qlabel">Their situation</span>${chips("context", CONTEXTS, false)}
+      <span class="qlabel">Device</span>${chips("device", DEVICES, false)}
+      <label class="qlabel" for="q-must">The one thing they must do</label><div class="field"><input id="q-must" data-q="must" value="${esc(d.must)}"></div>
+      <label class="qlabel" for="q-never">It must never look like…</label><div class="field"><input id="q-never" data-q="never" value="${esc(d.never)}" placeholder="e.g. a generic freelancer marketplace"></div></section>
+    <section class="card"><h2>About you, the designer</h2><p>Claude reads these as references to learn from, never to copy.</p>
+      <label class="qlabel" for="q-love">Something you love that isn't a website</label><div class="field"><input id="q-love" data-q="love" value="${esc(d.love)}" placeholder="a book cover, a building, an album, an object"></div>
+      <label class="qlabel" for="q-tired">What are you tired of seeing?</label><div class="field"><input id="q-tired" data-q="tired" value="${esc(d.tired)}" placeholder="e.g. bento grids, gradient blobs"></div>
+      <label class="check"><input type="checkbox" id="q-remember" ${d.remember ? "checked" : ""}> Remember these two answers for my next session</label></section>
+    <section class="card"><h2>Design thesis</h2><p>Three sentences the whole design has to serve. Draft it from your answers, then edit freely.</p>
+      <label for="q-thesis" class="qlabel">Thesis</label><textarea class="thesis" id="q-thesis" placeholder="Draft it from your answers, or write your own.">${esc(d.thesis)}</textarea>
+      <div class="thesis-tools">${sample ? `<button class="btn accent" id="t-claude">Draft with Claude</button>` : ""}<button class="btn" id="t-local">Draft from my answers</button><span class="note" id="t-note">${d.thesisSource === "claude" ? "Drafted by Claude." : ""}</span></div></section>
+  </div>`;
+  const keepDesigner = () => { if (d.remember) store.set("designer", { love: d.love, tired: d.tired, remember: true }); else store.set("designer", { remember: false }); };
+  main.querySelectorAll("[data-sl]").forEach(btn => btn.onclick = () => {
+    const id = btn.dataset.sl, v = +btn.dataset.v; d.sliders[id] = d.sliders[id] === v ? undefined : v;
+    btn.parentElement.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", d.sliders[id] === +x.dataset.v)); save(); renderSteps();
+  });
+  main.querySelectorAll("[data-place]").forEach(btn => btn.onclick = () => {
+    d.place = d.place === btn.dataset.place ? null : btn.dataset.place;
+    main.querySelectorAll("[data-place]").forEach(x => x.setAttribute("aria-pressed", d.place === x.dataset.place)); save();
+  });
+  main.querySelectorAll("[data-chips]").forEach(set => set.onclick = e => {
+    const btn = e.target.closest("button"); if (!btn) return; const key = set.dataset.chips, val = btn.dataset.val;
+    if (set.dataset.multi === "1") { const cur = new Set(d[key]); cur.has(val) ? cur.delete(val) : cur.add(val); d[key] = [...cur].slice(-2); }
+    else d[key] = d[key] === val ? null : val;
+    set.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", set.dataset.multi === "1" ? d[key].includes(x.dataset.val) : d[key] === x.dataset.val)); save();
+  });
+  main.querySelectorAll("[data-q]").forEach(inp => inp.oninput = () => { d[inp.dataset.q] = inp.value; save(); if (inp.dataset.q === "love" || inp.dataset.q === "tired") keepDesigner(); });
+  $("#q-remember").onchange = e => { d.remember = e.target.checked; keepDesigner(); save(); };
+  const th = $("#q-thesis"); th.oninput = () => { d.thesis = th.value; d.thesisSource = "edited"; save(); };
+  $("#t-local").onclick = () => { d.thesis = localThesis(); d.thesisSource = "local"; th.value = d.thesis; $("#t-note").textContent = "Drafted from your answers. Edit freely."; save(); };
+  if ($("#t-claude")) $("#t-claude").onclick = async () => {
+    const btn = $("#t-claude"), note = $("#t-note"); btn.disabled = true; note.textContent = "Claude is thinking…";
+    const ask = `Write a design thesis for a web page: exactly three plain sentences that every design decision must serve. Base it only on these answers from the designer. Use the character and place as qualities, never as literal imagery. No marketing words (seamless, elevate, unlock), no invented facts or numbers. English. Output only the three sentences.
+
+Product: ${b.name} — ${b.what}
+Audience: ${d.who || b.audience}
+Situation: ${d.context || "not given"}; device: ${d.device || "not given"}
+Character: ${sliderWords().join(", ") || "not given"}
+Feels like: ${(PLACES.find(p => p.id === d.place) || {}).name || "not given"}
+First five seconds: ${d.feel.join(", ") || "not given"}
+The one action: ${d.must || b.cta}
+Must never look like: ${d.never || "not given"}`;
+    try { const { text } = await sample(ask, { cache: false, onText: ({ text }) => { th.value = text; } }); d.thesis = text.trim(); d.thesisSource = "claude"; th.value = d.thesis; note.textContent = "Drafted by Claude. Edit freely."; save(); }
+    catch (e) { note.textContent = e?.code === "not_granted" ? "Claude access wasn’t allowed — use “Draft from my answers”." : e?.code === "rate_limited" ? "Usage limit reached for now — try later." : "Couldn’t reach Claude — try again or draft from your answers."; }
+    finally { btn.disabled = false; }
+  };
+}
+
 /* ---------------- rounds ---------------- */
 const ROUNDS = {
   dir: { title: "Which direction fits your product?", sub: "Each sample is a complete direction: color, type, layout and signature. Judge the overall feel; the details change in later rounds.",
@@ -316,6 +406,12 @@ const ROUNDS = {
 function ensureShown(kind) {
   const pool = ROUNDS[kind].pool().map(o => o.id), nope = new Set(S.nope[kind] || []);
   let shown = (S.shown[kind] || []).filter(id => pool.includes(id));
+  if (kind === "dir" && S.discSig !== discoverSig()) { S.discSig = discoverSig(); shown = []; }
+  if (!shown.length && kind === "dir" && discoverTarget()) {
+    const ranked = pool.filter(id => !nope.has(id)).sort((x, y) => dirScore(y) - dirScore(x));
+    const top = ranked.slice(0, 4), wild = shuffle(ranked.slice(4)).slice(0, 2);
+    shown = top.concat(wild); if (S.picks.dir && !shown.includes(S.picks.dir)) shown[5] = S.picks.dir;
+  }
   if (!shown.length) { const lead = pool.includes("brand") ? ["brand"] : []; shown = lead.concat(shuffle(pool.filter(id => id !== "brand" && !nope.has(id)))).slice(0, 6); }
   S.shown[kind] = shown; return shown;
 }
@@ -327,12 +423,12 @@ function reshuffle(kind) {
   S.shown[kind] = keep.concat(fresh).slice(0, 6); save(); render();
 }
 
-function optCard(kind, o, T, html, used) {
+function optCard(kind, o, T, html, used, fit) {
   const picked = S.picks[kind] === o.id, noped = (S.nope[kind] || []).includes(o.id);
   return `<article class="opt ${picked ? "picked" : ""} ${noped ? "noped" : ""}" data-id="${esc(o.id)}">
     <span class="badge">Your pick</span>
     <button class="stage" data-act="pick" aria-label="Pick ${esc(ROUNDS[kind] ? ROUNDS[kind].label(o) : o.fa)}" data-tok>${html}</button>
-    <div class="meta"><div class="txt"><strong>${esc(ROUNDS[kind] ? ROUNDS[kind].label(o) : o.fa)}${used ? `<span class="used">used before</span>` : ""}</strong><span>${esc(ROUNDS[kind] ? ROUNDS[kind].desc(o) : o.desc)}</span></div>
+    <div class="meta"><div class="txt"><strong>${esc(ROUNDS[kind] ? ROUNDS[kind].label(o) : o.fa)}${fit ? `<span class="used fit">fits your answers</span>` : ""}${used ? `<span class="used">used before</span>` : ""}</strong><span>${esc(ROUNDS[kind] ? ROUNDS[kind].desc(o) : o.desc)}</span></div>
     <button class="icon-btn nope ${noped ? "on" : ""}" data-act="nope" aria-pressed="${noped}">✕ No</button>
     <button class="icon-btn pick ${picked ? "on" : ""}" data-act="pick" aria-pressed="${picked}">${picked ? "✓ Picked" : "Pick"}</button></div></article>`;
 }
@@ -362,7 +458,8 @@ function refreshCards(main, kind) {
 
 function renderRound(main, kind) {
   const R = ROUNDS[kind], ids = ensureShown(kind), pool = R.pool(), used = usedIds(), map = {};
-  const cards = ids.map(id => pool.find(o => o.id === id)).filter(Boolean).map(o => { const T = R.tok(o); map[o.id] = T; return optCard(kind, o, T, R.render(T, o), used.has(o.id) && o.id !== "brand"); }).join("");
+  const fits = kind === "dir" && discoverTarget() ? new Set(pool.map(o => o.id).sort((x, y) => dirScore(y) - dirScore(x)).slice(0, 4)) : new Set();
+  const cards = ids.map(id => pool.find(o => o.id === id)).filter(Boolean).map(o => { const T = R.tok(o); map[o.id] = T; return optCard(kind, o, T, R.render(T, o), used.has(o.id) && o.id !== "brand", fits.has(o.id)); }).join("");
   main.innerHTML = `<div class="head"><div><h1>${R.title}</h1><p>${R.sub}</p></div><div class="legend"><span><b>${pool.length}</b> in the library</span><span><b>${(S.nope[kind] || []).length}</b> rejected</span></div></div>
     <div class="grid ${R.three ? "three" : ""}">${cards}</div>`;
   bindCards(main, kind, map); save();
@@ -404,6 +501,7 @@ function buildPrompt() {
     `Build a ${b.pageType || "landing page"} for ${b.name}${b.what ? ` — ${b.what.trim().replace(/[.!]+$/, "")}` : ""}.`,
     `Direction: ${dir.en}, ${dn.id === "ultra" ? "ultra-minimal" : dn.id} density. NOT ${dir.not}.`,
     b.audience ? `Audience: ${b.audience}.` : "",
+    ...discoverLines(),
     "",
     "DIRECTION (chosen visually by the designer — follow exactly)",
     `- Movement: ${dir.en}`, `- Density: ${dn.id === "ultra" ? "ultra-minimal" : dn.id}`, `- Structure: ${st.id}`,
@@ -445,12 +543,34 @@ function buildPrompt() {
     "AVOID",
     ...BASE_AVOID.map(a => `- ${a}`),
     ...nopes.map(a => `- ${a} (the designer rejected it)`),
+    D().never ? `- anything that looks like ${D().never}` : null,
+    D().tired ? `- ${D().tired} (the designer is tired of it)` : null,
     `- the most literal visual metaphor for ${b.name}`,
     b.notes ? "" : null, b.notes ? "NOTES FROM THE DESIGNER" : null, b.notes ? `- ${b.notes}` : null,
     "",
     "OUTPUT: one self-contained HTML file, vanilla CSS/JS, Google Fonts only, works at 390px width with no horizontal scroll.",
   ];
   return lines.filter(l => l !== null).join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+function discoverLines() {
+  const d = D(), pl = PLACES.find(p => p.id === d.place), words = sliderWords(), out = [];
+  if (words.length || pl || d.feel.length) {
+    out.push("", "BRAND CHARACTER (from the designer's discovery answers; use for tone, hierarchy and copy, never as literal imagery)");
+    if (words.length) out.push(`- Character: ${words.join(", ")}`);
+    if (pl) out.push(`- Atmosphere: like ${pl.name.toLowerCase()} — ${pl.desc.toLowerCase()} (a quality, not a picture)`);
+    if (d.feel.length) out.push(`- In the first five seconds the visitor should feel: ${d.feel.map(f => f.toLowerCase()).join(" and ")}`);
+  }
+  if (d.who || d.context || d.device || d.must) {
+    out.push("", "AUDIENCE MOMENT");
+    if (d.who) out.push(`- Who arrives: ${d.who}`);
+    if (d.context) out.push(`- Situation: ${d.context.toLowerCase()}`);
+    if (d.device) out.push(`- Device: ${d.device.toLowerCase()}${d.device === "Mostly mobile" ? " — design the 390px layout first" : ""}`);
+    if (d.must) out.push(`- The one action every section leads to: ${d.must}`);
+  }
+  if (d.thesis.trim()) out.push("", "DESIGN THESIS (every decision must serve this)", ...d.thesis.trim().split(/\n+/).map(l => `- ${l}`));
+  if (d.love.trim()) out.push("", "DESIGNER REFERENCE", `- The designer loves: ${d.love.trim()}. Borrow its principles (proportion, restraint, rhythm), never its look.`);
+  return out;
 }
 
 /* ---------------- step: result ---------------- */
@@ -469,7 +589,7 @@ function renderResult(main) {
   main.innerHTML = `<div class="head"><div><h1>This is your combination.</h1><p>Every pick on one page. Click a card to change that round. The prompt is ready below.</p></div></div>
   <div class="result">
     <div class="final-stage" data-tok id="final">${heroHTML(T)}</div>
-    <div class="chips">${chip(1, "Direction", T.dir.fa)}${chip(2, "Type", `${T.pair.d} + ${T.pair.b}`)}${chip(3, "Color", T.pal.fa)}${chip(4, "Structure", st?.fa)}${chip(5, "Signature", sg?.fa)}${chip(6, "Density & motion", dn && mo ? `${dn.fa} · ${mo.fa}` : "")}
+    <div class="chips">${chip(1, "Thesis", D().thesis ? D().thesis.split(/(?<=\.)\s/)[0] : "")}${chip(2, "Direction", T.dir.fa)}${chip(3, "Type", `${T.pair.d} + ${T.pair.b}`)}${chip(4, "Color", T.pal.fa)}${chip(5, "Structure", st?.fa)}${chip(6, "Signature", sg?.fa)}${chip(7, "Density & motion", dn && mo ? `${dn.fa} · ${mo.fa}` : "")}
       <div class="chip nopes"><small>Rejected</small><strong>${nopeCount ? `${nopeCount}, listed under AVOID` : "None"}</strong></div></div>
     <div class="prompt-box">
       <div class="prompt-tools">
@@ -508,6 +628,7 @@ Rules:
 - Fill the gaps at the same precision: for each PAGE STRUCTURE section, give one line of real content direction using the product's own words; add component states and responsive behaviour where missing.
 - Stay inside the density budget. If the density is minimal or ultra-minimal, remove anything decorative that is not required.
 - Do not invent facts: no numbers, prices, testimonials, logos or names that the brief does not contain. Use placeholders like [PRICE].
+- Use BRAND CHARACTER, AUDIENCE MOMENT and DESIGN THESIS to decide copy tone, what comes first, and what to cut. Never turn the character or atmosphere into literal imagery.
 - Keep the same section headings in the same order. English only. Output ONLY the prompt, no preface.
 
 BRIEF
@@ -557,6 +678,7 @@ const needs = { dir: "dir", type: "type", pal: "pal", struct: "struct", sig: "si
 function stepDone(i) {
   const id = STEPS[i].id;
   if (id === "brief") return !!S.brief.name.trim();
+  if (id === "discover") return true;
   if (id === "dens") return !!(S.picks.dens && S.picks.motion);
   if (id === "result") return false;
   return !!S.picks[needs[id]];
@@ -570,7 +692,7 @@ function renderSteps() {
 }
 function renderBar() {
   const id = STEPS[S.step].id, done = stepDone(S.step), isRound = !!ROUNDS[id];
-  const status = id === "brief" ? "A product name is enough to start." : id === "result" ? "Go back and change any round whenever you like." : id === "dens" ? (done ? "Great — on to the prompt." : "Pick one density and one motion style.") : done ? "Picked. You can move to the next round." : "Click the sample you like.";
+  const status = id === "brief" ? "A product name is enough to start." : id === "discover" ? "Answer what you like and skip the rest." : id === "result" ? "Go back and change any round whenever you like." : id === "dens" ? (done ? "Great — on to the prompt." : "Pick one density and one motion style.") : done ? "Picked. You can move to the next round." : "Click the sample you like.";
   $("#bar").innerHTML = `<div class="wrap"><span class="status">${status}</span>
     ${S.step > 0 ? `<button class="btn" id="b-back">← Back</button>` : ""}
     ${isRound ? `<button class="btn" id="b-shuf">More options</button>` : ""}
@@ -580,13 +702,14 @@ function renderBar() {
   $("#b-next") && ($("#b-next").onclick = () => go(S.step + 1));
   $("#b-shuf") && ($("#b-shuf").onclick = () => reshuffle(id));
   $("#b-rand") && ($("#b-rand").onclick = () => { const ids = (S.shown[id] || []).filter(x => !(S.nope[id] || []).includes(x)); S.picks[id] = shuffle(ids)[0]; save(); render(); });
-  $("#b-new") && ($("#b-new").onclick = () => { const brief = S.brief; S = fresh(); S.brief = brief; S.step = 1; S.maxStep = 1; save(); render(); });
+  $("#b-new") && ($("#b-new").onclick = () => { const brief = S.brief, disc = S.discover; S = fresh(); S.brief = brief; S.discover = disc; S.step = 2; S.maxStep = 2; save(); render(); });
 }
 
 function render() {
   const main = $("#main"), id = STEPS[S.step].id;
   renderSteps();
   if (id === "brief") renderBrief(main);
+  else if (id === "discover") renderDiscover(main);
   else if (ROUNDS[id]) renderRound(main, id);
   else if (id === "dens") renderDens(main);
   else renderResult(main);

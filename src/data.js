@@ -172,3 +172,39 @@ const BASE_AVOID = [
   "copywriting words: seamless, elevate, unlock, empower, revolutionize",
   "invented numbers, prices, testimonials or client logos (use placeholders like [PRICE])",
 ];
+
+/* ---------------- Discover: abstract questions ----------------
+   Every vector is [energy, tone, time, access, voice, finish], each -2..2:
+   quiet↔loud, precise↔playful, timeless↔of-the-moment, exclusive↔welcoming, serious↔witty, crafted↔raw. */
+const SLIDERS = [
+  { id: "energy", left: "Quiet", right: "Loud" },
+  { id: "tone", left: "Precise", right: "Playful" },
+  { id: "time", left: "Timeless", right: "Of the moment" },
+  { id: "access", left: "Exclusive", right: "Welcoming" },
+  { id: "voice", left: "Serious", right: "Witty" },
+  { id: "finish", left: "Crafted", right: "Raw" },
+];
+
+const PLACES = [
+  { id: "library", name: "A library", desc: "Quiet, ordered, timeless", vec: [-2, -2, 2, 0, -1, -2] },
+  { id: "studio", name: "A recording studio", desc: "Focused, technical, a little raw", vec: [0, -1, 0, -1, 0, 1] },
+  { id: "market", name: "A street market", desc: "Loud, open, everyone welcome", vec: [2, 2, -1, 2, 1, 2] },
+  { id: "gallery", name: "A gallery", desc: "Space around every object", vec: [-1, -1, 1, -2, -1, -2] },
+  { id: "workshop", name: "A workshop", desc: "Tools out, work in progress", vec: [0, 0, 0, 1, 0, 2] },
+  { id: "stadium", name: "A stadium", desc: "Big, collective, energetic", vec: [2, 0, -1, 2, 0, 0] },
+  { id: "lab", name: "A laboratory", desc: "Exact, measured, clean", vec: [-1, -2, 0, -1, -1, -1] },
+  { id: "cafe", name: "A neighborhood café", desc: "Warm, familiar, unhurried", vec: [-1, 1, 0, 2, 1, 0] },
+];
+
+const FEELINGS = ["Trust", "Excitement", "Calm", "Curiosity", "Belonging", "Urgency", "Delight", "Authority", "Focus", "Ambition"];
+const CONTEXTS = ["At a desk, focused", "On the phone, between things", "Browsing for inspiration", "Comparing options, skeptical", "Arriving from a link someone shared"];
+const DEVICES = ["Mostly desktop", "Mostly mobile", "Both equally"];
+
+// Character of each direction on the same six axes (used to rank the Direction round).
+const DIR_VEC = {
+  swiss: [-1, -2, 2, 0, -1, -1], "dark-poster": [2, 0, 0, 0, 0, 1], riso: [1, 2, -1, 1, 2, 2], japan: [-2, -2, 2, -1, -1, -2],
+  bauhaus: [1, -1, 2, 0, 0, -1], terminal: [0, -1, -1, -1, 0, 2], luxury: [-1, -2, 2, -2, -2, -2], blueprint: [0, -2, 1, 0, -1, -1],
+  rave: [2, 2, -2, 1, 2, 2], broadcast: [2, 0, -1, 1, 0, 0], letterpress: [-2, -1, 2, 0, -1, -2], seventies: [1, 2, -1, 2, 1, 0],
+  y2k: [1, 1, -2, 1, 1, -1], signage: [0, -2, 1, 2, -1, -1], earth: [-2, -1, 1, 1, -1, -1], jewel: [0, -1, 1, -1, -1, -2],
+  graphite: [-1, -2, 0, -1, -1, -1], forest: [-1, -1, 1, 1, 0, -1],
+};
