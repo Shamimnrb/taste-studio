@@ -11,6 +11,7 @@ shell = (src / "shell.html").read_text(encoding="utf-8")
 body = (shell
         .replace("/*CSS*/", (src / "style.css").read_text(encoding="utf-8"))
         .replace("/*DATA*/", (src / "data.js").read_text(encoding="utf-8"))
+        .replace("/*DIRS*/", (src / "directions.js").read_text(encoding="utf-8"))
         .replace("/*STUDIES*/", (src / "studies.js").read_text(encoding="utf-8"))
         .replace("/*APP*/", (src / "app.js").read_text(encoding="utf-8")))
 
