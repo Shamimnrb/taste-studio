@@ -1,4 +1,6 @@
-/* Taste Studio — app logic. Plain JS, no build step needed beyond inlining. */
+/* Taste Studio v2 — concept engine.
+   Flow: Brief → Discover → Sources → Concepts → Refine → Prompt.
+   Choices never override the concept: after a concept is picked, everything varies inside it. */
 (() => {
 "use strict";
 
@@ -7,715 +9,638 @@ const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
-const rgb = h => { h = h.replace("#", ""); if (h.length === 3) h = [...h].map(c => c + c).join(""); const n = parseInt(h.slice(0, 6), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+const HEX = /^#[0-9a-f]{6}$/i;
+const rgb = h => { const n = parseInt(h.slice(1, 7), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
 const lum = h => { const f = v => (v /= 255) <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; const [r, g, b] = rgb(h); return .2126 * f(r) + .7152 * f(g) + .0722 * f(b); };
 const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
-const mixRGB = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
-const css = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
-const isHex = s => /^#?[0-9a-f]{6}$/i.test(s.trim());
+const mixHex = (a, b, t) => "#" + rgb(a).map((v, i) => Math.round(v + (rgb(b)[i] - v) * t).toString(16).padStart(2, "0")).join("");
+const meaningful = s => !!s && /[A-Za-z؀-ۿ]{3,}/.test(s) && s.trim().length >= 4;
 
-// value noise
-const perm = new Uint8Array(512); { const p = shuffle([...Array(256).keys()]); for (let i = 0; i < 512; i++) perm[i] = p[i & 255]; }
-const fade = t => t * t * (3 - 2 * t);
-const hh = (x, y, z) => perm[(perm[(perm[x & 255] + y) & 255] + z) & 255] / 255;
-function noise(x, y, z) {
-  const X = Math.floor(x), Y = Math.floor(y), Z = Math.floor(z), u = fade(x - X), v = fade(y - Y), w = fade(z - Z);
-  const L = (a, b, t) => a + (b - a) * t, c = (a, b, d) => hh(X + a, Y + b, Z + d);
-  return L(L(L(c(0,0,0), c(1,0,0), u), L(c(0,1,0), c(1,1,0), u), v), L(L(c(0,0,1), c(1,0,1), u), L(c(0,1,1), c(1,1,1), u), v), w);
-}
-
-/* ---------------- storage (per-viewer convenience only) ---------------- */
 const store = {
-  get(k, d) { try { const v = localStorage.getItem("taste-studio:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
-  set(k, v) { try { localStorage.setItem("taste-studio:" + k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
+  get(k, d) { try { const v = localStorage.getItem("taste-studio:v2:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("taste-studio:v2:" + k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
 };
 
 /* ---------------- fonts ---------------- */
 const loaded = new Set();
-const SERIF = new Set(["Bodoni Moda", "Fraunces", "Instrument Serif", "DM Serif Display", "Gloock", "Young Serif", "Cormorant Garamond", "Abril Fatface", "Newsreader", "Literata", "Source Serif 4", "Italiana"]);
-const MONO = new Set(["JetBrains Mono", "IBM Plex Mono", "Space Mono", "DM Mono", "Fragment Mono", "Martian Mono", "Geist Mono", "Azeret Mono", "Red Hat Mono", "Major Mono Display"]);
+const SERIF = /garamond|serif|bodoni|fraunces|gloock|young|literata|newsreader|spectral|marcellus|caslon|playfair|abril|alfa slab|cormorant/i;
+const MONO = /mono|courier/i;
 function loadFont(name) {
   if (!name || loaded.has(name)) return; loaded.add(name);
-  const spec = FONT_SPEC[name] || name.trim().replace(/\s+/g, "+");
-  const l = document.createElement("link"); l.rel = "stylesheet";
-  l.href = `https://fonts.googleapis.com/css2?family=${spec}&display=swap`;
-  document.head.appendChild(l);
+  const add = href => { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = href; document.head.appendChild(l); return l; };
+  const fam = name.trim().replace(/\s+/g, "+");
+  if (FONT_SPEC[name]) { add(`https://fonts.googleapis.com/css2?family=${FONT_SPEC[name]}&display=swap`); return; }
+  const l = add(`https://fonts.googleapis.com/css2?family=${fam}:wght@400;700&display=swap`);
+  l.onerror = () => add(`https://fonts.googleapis.com/css2?family=${fam}&display=swap`);
 }
-const stack = n => `"${n}", ${MONO.has(n) ? "ui-monospace, monospace" : SERIF.has(n) ? "Georgia, serif" : "system-ui, sans-serif"}`;
+const stack = n => `"${n}", ${MONO.test(n) ? "ui-monospace, monospace" : SERIF.test(n) ? "Georgia, serif" : "system-ui, sans-serif"}`;
 
 /* ---------------- state ---------------- */
 const STEPS = [
-  { id: "brief", fa: "Brief" }, { id: "discover", fa: "Discover" }, { id: "dir", fa: "Direction" }, { id: "type", fa: "Type" }, { id: "pal", fa: "Color" },
-  { id: "struct", fa: "Structure" }, { id: "sig", fa: "Signature" }, { id: "dens", fa: "Density & motion" }, { id: "result", fa: "Prompt" },
+  { id: "brief", t: "Brief" }, { id: "discover", t: "Discover" }, { id: "sources", t: "Art sources" },
+  { id: "concepts", t: "Concepts" }, { id: "refine", t: "Refine" }, { id: "prompt", t: "Prompt" },
 ];
 const EXAMPLE_BRIEF = {
   name: "YT Jobs", what: "A job board for the YouTube economy: creators hire editors, thumbnail designers and writers.",
-  audience: "YouTube creators hiring, and freelancers looking for channel work", pageType: "landing page",
-  headline: "Hire the people behind great channels", cta: "Post a job",
-  items: "Video editor, Thumbnail designer, Scriptwriter, Channel manager, Shorts clipper", keepFonts: "", keepColors: "", notes: "",
+  audience: "YouTube creators hiring, and freelancers looking for channel work", headline: "Hire the people behind great channels",
+  cta: "Post a job", items: "Video editor, Thumbnail designer, Scriptwriter, Channel manager, Shorts clipper", keepFonts: "", keepColors: "", notes: "",
 };
-const DISCOVER0 = { sliders: {}, place: null, feel: [], context: null, device: null, who: "", must: "", never: "", love: "", tired: "", remember: true, thesis: "", thesisSource: "" };
-const fresh = () => ({ step: 0, maxStep: 0, brief: { ...EXAMPLE_BRIEF }, discover: { ...DISCOVER0, ...store.get("designer", {}) }, picks: {}, nope: {}, shown: {}, prompt: "", promptSource: "" });
-const stored = store.get("session", {});
-let S = Object.assign(fresh(), stored, { brief: { ...EXAMPLE_BRIEF, ...(stored.brief || {}) }, discover: { ...DISCOVER0, ...store.get("designer", {}), ...(stored.discover || {}) }, picks: stored.picks || {}, nope: stored.nope || {}, shown: stored.shown || {} });
+const DISCOVER0 = { truth: "", sliders: {}, place: null, feel: [], who: "", never: "", love: "", tired: "", remember: true };
+const fresh = () => ({ step: 0, maxStep: 0, brief: { ...EXAMPLE_BRIEF }, discover: { ...DISCOVER0, ...store.get("designer", {}) },
+  srcPicks: [], srcNope: [], srcShown: [], srcSig: "", concepts: [], conceptsBy: "", conceptKey: "", conceptNope: [], conceptPick: null,
+  sketches: {}, avoidLiteral: [], refine: { pal: 0, type: 0, intensity: "measured" }, attachSketch: true, prompt: "", promptSource: "" });
+const saved = store.get("session", {});
+let S = Object.assign(fresh(), saved, { brief: { ...EXAMPLE_BRIEF, ...(saved.brief || {}) }, discover: { ...DISCOVER0, ...store.get("designer", {}), ...(saved.discover || {}) }, refine: { pal: 0, type: 0, intensity: "measured", ...(saved.refine || {}) } });
 const save = () => store.set("session", S);
 let history = store.get("history", []);
-const usedIds = () => { const u = new Set(); history.forEach(h => Object.values(h.picks || {}).forEach(v => u.add(v))); return u; };
-
-/* ---------------- tokens: what the samples are drawn with ---------------- */
-function brandPair() {
-  const f = S.brief.keepFonts.split(/[,،/+]/).map(s => s.trim()).filter(Boolean);
-  if (!f.length) return null;
-  return { id: "brand", d: f[0], dw: 700, dc: "none", dt: "-0.02em", lh: 1, b: f[1] || f[0], m: f[2] || "IBM Plex Mono", fa: "Your current brand fonts", rule: "Brand fonts are fixed; express the new direction through size, spacing and layout." };
-}
-function brandPalette() {
-  const hs = (S.brief.keepColors.match(/#?[0-9a-f]{6}\b/gi) || []).map(h => "#" + h.replace("#", "").toLowerCase());
-  if (hs.length < 2) return null;
-  const byL = hs.slice().sort((a, b) => lum(b) - lum(a));
-  const bg = byL[0], tx = byL[byL.length - 1];
-  const sat = h => { const [r, g, b] = rgb(h); return Math.max(r, g, b) - Math.min(r, g, b); };
-  const rest = hs.filter(h => h !== bg && h !== tx).sort((a, b) => sat(b) - sat(a));
-  const ac = rest[0] || tx, ac2 = rest[1] || tx;
-  const m = (a, b, t) => "#" + mixRGB(rgb(a), rgb(b), t).map(v => Math.round(v).toString(16).padStart(2, "0")).join("");
-  return { id: "brand", fa: "Your current brand colors", en: "brand palette", bg, sf: m(bg, tx, .06), tx, mu: m(tx, bg, .42), ln: m(bg, tx, .16), ac, acfg: contrast(ac, "#ffffff") > contrast(ac, "#111111") ? "#ffffff" : "#111111", ac2, avoid: "" };
-}
-const findPair = id => id === "brand" ? brandPair() : PAIRS.find(p => p.id === id);
-const findPal = id => id === "brand" ? brandPalette() : PALETTES.find(p => p.id === id);
-const dirOf = id => DIRECTIONS.find(d => d.id === id);
-
-// Build a token set from a direction, overridden by any picks / explicit overrides.
-function tokens(over = {}) {
-  const dir = dirOf(over.dir || S.picks.dir) || DIRECTIONS[0];
-  const pair = findPair(over.type || S.picks.type) || findPair(dir.pair);
-  const pal = findPal(over.pal || S.picks.pal) || findPal(dir.pal);
-  const sig = over.sig || S.picks.sig || dir.sig;
-  [pair.d, pair.b, pair.m].forEach(loadFont);
-  return { dir, pair, pal, sig, layout: over.layout || dir.layout, r: dir.r, sh: dir.sh };
-}
-function mockStyle(T) {
-  const p = T.pal, f = T.pair;
-  return [`--m-bg:${p.bg}`, `--m-sf:${p.sf}`, `--m-tx:${p.tx}`, `--m-mu:${p.mu}`, `--m-ln:${p.ln}`, `--m-ac:${p.ac}`, `--m-acfg:${p.acfg}`, `--m-ac2:${p.ac2}`,
-    `--m-fd:${stack(f.d)}`, `--m-fb:${stack(f.b)}`, `--m-fm:${stack(f.m)}`, `--m-dw:${f.dw}`, `--m-dc:${f.dc}`, `--m-dt:${f.dt}`, `--m-lh:${f.lh}`,
-    `--m-r:${Math.min(T.r, 999)}px`, `--m-sh:${T.sh}`].join(";").replace(/"/g, "&quot;");
-}
-
-/* ---------------- sample renderers ---------------- */
+const D = () => S.discover;
 const B = () => {
   const b = S.brief, items = b.items.split(/[,،\n]/).map(s => s.trim()).filter(Boolean);
-  return { name: b.name || "Product", head: b.headline || b.what || b.name || "Your headline", what: b.what || "", cta: b.cta || "Get started", items: items.length ? items : ["First item", "Second item", "Third item", "Fourth item"] };
+  const what = (b.what || "").split(/(?<=[.!?])\s/)[0].slice(0, 130);
+  return { name: b.name || "Product", head: b.headline || b.name || "Your headline", what, cta: b.cta || "Get started", items: items.length ? items : ["First", "Second", "Third"] };
 };
+const srcById = id => SOURCES.find(s => s.id === id);
 
-function heroHTML(T) {
-  const b = B(), h = esc(b.head), n = esc(b.name), w = esc(b.what), c = esc(b.cta), it = b.items.map(esc);
-  const nav = `<div class="nav"><span class="logo">${n}</span><span class="links mo"><span>${it[0] || ""}</span><span>Menu</span></span></div>`;
-  const sig = `<div class="sig" data-sig="${T.sig}"></div>`;
-  const L = {
-    split: `<div class="body"><div class="left"><span class="mo">${n} — ${new Date().getFullYear()}</span><h2 class="d">${h}</h2><p class="bd">${w}</p><div><span class="cta">${c} →</span></div></div>${sig}</div>`,
-    giant: `<div class="body"><div class="foot"><span class="mo">${it[0] || ""}</span><span class="mo">${it[1] || ""}</span></div><h2 class="d">${h}</h2>${sig}<div class="foot"><p class="bd">${w}</p><span class="cta">${c}</span></div></div>`,
-    letter: `<div class="body">${sig}<span class="mo">${n}</span><h2 class="d">${h}</h2><p class="bd">${w}</p><span class="lnk">${c} →</span></div>`,
-    index: `<div class="body"><div class="left"><span class="mo">${n}</span><div style="display:flex;flex-direction:column;gap:2cqh"><h2 class="d">${h}</h2><p class="bd">${w}</p></div><span class="lnk">${c} →</span></div><div class="rows">${sig}<div style="height:2cqh"></div>${it.slice(0, 5).map((x, i) => `<div class="r"><span>${x}</span><span class="mo">${["Open", "New", "Open", "Remote", "Open"][i]}</span></div>`).join("")}</div></div>`,
-    mag: `<div class="body"><h2 class="d">${h}</h2><div style="display:flex;flex-direction:column;gap:1.4cqh;min-height:0">${sig}<span class="cap">Fig. 1 — ${it[0] || n}</span></div><div class="col"><p class="bd">${w}</p><span class="mo">${it.slice(0, 3).join(" · ")}</span><div><span class="cta">${c}</span></div></div></div>`,
-    term: `<div class="body"><div class="lines"><span class="mo">~/${n.toLowerCase().replace(/\s+/g, "-")}</span><span>&gt; ${n.toLowerCase()} --help</span><h2 class="d">${h}</h2><span style="color:var(--m-mu)">&gt; ${w}</span><span>&gt; ${c.toLowerCase()} <span class="cur"></span></span></div>${sig}</div>`,
-    bento: `<div class="body"><div class="tile t1"><span class="mo">${n}</span><h2 class="d">${h}</h2><p class="bd">${w}</p></div><div class="tile t2" style="position:relative">${sig}</div><div class="tile t3"><span class="mo">${it[0] || ""}</span><span class="big">→</span></div><div class="tile t4"><span class="mo">Start</span><span class="big" style="font-size:4.4cqi">${c}</span></div></div>`,
-  };
-  return `<div class="mock L-${T.layout}" style="${mockStyle(T)}">${nav}${L[T.layout] || L.split}</div>`;
+/* ---------------- capabilities ---------------- */
+let sample = null, downloads = null;
+const cur = () => STEPS[S.step].id;
+if (window.claude?.use) {
+  window.claude.use("sample").then(s => { sample = s; if (s) render(); }).catch(() => {});
+  window.claude.use("downloads").then(d => { downloads = d; if (d && cur() === "prompt") render(); }).catch(() => {});
 }
 
-function specimenHTML(T) {
-  const b = B(), f = T.pair;
-  return `<div class="mock" style="${mockStyle(T)}"><div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;padding:var(--pad)">
-    <div style="display:flex;justify-content:space-between;gap:12px"><span class="mo">${esc(f.d)} · ${f.dw}</span><span class="mo">${esc(f.b)} / ${esc(f.m)}</span></div>
-    <h2 class="d" style="font-size:9.4cqi">${esc(b.head)}</h2>
-    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:var(--pad);align-items:end">
-      <p class="bd" style="color:var(--m-tx);opacity:.82">${esc(b.what || "Body text sits here in the body face, set at a comfortable size and measure so it reads easily.")}</p>
-      <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start"><span class="mo">${esc(b.items.slice(0, 2).join(" · "))}</span><span class="cta">${esc(b.cta)}</span></div>
-    </div></div></div>`;
-}
-
-function sigStageHTML(T) {
-  const b = B();
-  return `<div class="mock" style="${mockStyle(T)}"><div class="sig" data-sig="${T.sig}" style="position:absolute;inset:0"></div>
-    <div style="position:absolute;left:var(--pad);bottom:var(--pad);right:var(--pad);display:flex;justify-content:space-between;align-items:end;gap:12px;pointer-events:none">
-    <h2 class="d" style="font-size:6cqi;background:var(--m-bg);padding:.25em .4em;border-radius:4px">${esc(b.name)}</h2><span class="mo" style="background:var(--m-bg);padding:.4em .6em;border-radius:4px">${esc(b.items[0] || "")}</span></div></div>`;
-}
-
-function wireHTML(st, T) {
-  const blk = ([k, label, h]) => k === "split"
-    ? `<div class="split" style="height:${h}px">${label.map(l => `<div class="blk" style="height:100%">${l}</div>`).join("")}</div>`
-    : `<div class="blk ${k}" style="height:${h}px">${label}</div>`;
-  return `<div class="mock" style="${mockStyle(T)}"><div class="wf">${st.blocks.map(blk).join("")}</div></div>`;
-}
-
-function densHTML(d, T) {
-  return `<div class="mock" style="${mockStyle(T)}"><div class="dens"><div class="page">${d.blocks.map(([k, h]) => `<div class="b ${k}" style="height:${h * 2.4}px"></div>`).join("")}</div></div></div>`;
-}
-
-function motionHTML(m, T) {
-  const word = (B().name || "Hello").slice(0, 10);
-  const letters = m.id === "type" ? [...word].map((ch, i) => `<span style="animation-delay:${i * 40}ms">${esc(ch)}</span>`).join("") : esc(word);
-  return `<div class="mock" style="${mockStyle(T)}"><div class="mdemo" data-motion="${m.cls}"><div class="w">${letters}</div><span class="cta">${esc(B().cta)}</span>${m.id === "mech" ? `<span class="cnt" data-count>00</span>` : ""}</div></div>`;
-}
-
-/* ---------------- signatures ---------------- */
-const LIVE = new Set();
-let liveT0 = performance.now();
-function addLive(el, fps, fn) { const it = { el, fn, every: 1000 / fps, last: 0 }; LIVE.add(it); if (reduce) fn(0); return it; }
-const vis = new IntersectionObserver(es => es.forEach(e => { e.target._vis = e.isIntersecting; }));
-function loop(now) {
-  LIVE.forEach(it => {
-    if (!it.el.isConnected) { LIVE.delete(it); return; }
-    if (it.el._vis === false || now - it.last < it.every) return;
-    it.last = now; it.fn(now - liveT0);
-  });
-  requestAnimationFrame(loop);
-}
-if (!reduce) requestAnimationFrame(loop);
-
-function canvasIn(el, onSize) {
-  const cv = document.createElement("canvas"); el.appendChild(cv);
-  const ctx = cv.getContext("2d"); const st = { cv, ctx, w: 0, h: 0 };
-  const fit = () => { const r = el.getBoundingClientRect(), d = Math.min(devicePixelRatio || 1, 2); if (!r.width) return; st.w = r.width; st.h = r.height; cv.width = r.width * d | 0; cv.height = r.height * d | 0; ctx.setTransform(d, 0, 0, d, 0, 0); onSize && onSize(st); };
-  new ResizeObserver(fit).observe(el); fit(); vis.observe(el); return st;
-}
-
-function mountSig(el, id, T) {
-  const p = T.pal, b = B(), A = rgb(p.ac), A2 = rgb(p.ac2), TX = rgb(p.tx), BG = rgb(p.bg), SF = rgb(p.sf);
-  const dark = lum(p.bg) < .2;
-  el.innerHTML = "";
-  const S2 = {
-    pixel() {
-      const st = canvasIn(el), stops = [SF, A, A2, TX];
-      const draw = t => { const { ctx, w, h } = st; if (!w) return; const cell = 22, cols = Math.ceil(w / cell), rows = Math.ceil(h / cell), z = t * .00005;
-        ctx.fillStyle = p.bg; ctx.fillRect(0, 0, w, h);
-        for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
-          let v = (x / cols * .6 + y / rows * .7) + (noise(x * .1, y * .1, z) - .5) * .7; v = Math.min(.999, Math.max(0, v)) * 3;
-          const i = Math.floor(v); ctx.fillStyle = css(mixRGB(stops[i], stops[Math.min(3, i + 1)], v - i)); ctx.fillRect(x * cell + .5, y * cell + .5, cell - 1, cell - 1); } };
-      addLive(el, 20, draw); draw(0);
-    },
-    halftone() {
-      const st = canvasIn(el);
-      const draw = t => { const { ctx, w, h } = st; if (!w) return; const g = 12, z = t * .00025; ctx.fillStyle = p.sf; ctx.fillRect(0, 0, w, h); ctx.fillStyle = p.ac;
-        for (let y = g / 2; y < h; y += g) for (let x = g / 2; x < w; x += g) { const r = Math.max(0, noise(x * .012, y * .012, z) * 1.3 - .25) * g * .55; if (r > .3) { ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); } } };
-      addLive(el, 20, draw); draw(0);
-    },
-    contour() {
-      const st = canvasIn(el);
-      const draw = t => { const { ctx, w, h } = st; if (!w) return; const z = t * .00012; ctx.fillStyle = p.sf; ctx.fillRect(0, 0, w, h);
-        for (let i = 0; i < 18; i++) { ctx.beginPath(); const base = h * (i + .5) / 18;
-          for (let x = 0; x <= w; x += 6) { const y = base + (noise(x * .006, i * .35, z) - .5) * h * .35; x ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-          ctx.strokeStyle = i % 5 === 2 ? p.ac : `rgba(${TX.join(",")},.3)`; ctx.lineWidth = i % 5 === 2 ? 2 : 1; ctx.stroke(); } };
-      addLive(el, 20, draw); draw(0);
-    },
-    dither() {
-      const st = canvasIn(el), off = document.createElement("canvas"), oc = off.getContext("2d");
-      const M = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-      const draw = t => { const { ctx, w, h } = st; if (!w || h < 4) return; const px = 4, W = Math.ceil(w / px), H = Math.ceil(h / px); off.width = W; off.height = H;
-        const img = oc.createImageData(W, H), cx = W * (.5 + .3 * Math.sin(t * .0003)), cy = H * (.5 + .25 * Math.cos(t * .00023)), R = Math.max(W, H) * .7;
-        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const d = Math.hypot(x - cx, y - cy) / R, v = 1 - d + (noise(x * .05, y * .05, t * .0002) - .5) * .4;
-          const on = v > (M[(y & 3) * 4 + (x & 3)] + .5) / 16, c = on ? A : SF, k = (y * W + x) * 4; img.data[k] = c[0]; img.data[k + 1] = c[1]; img.data[k + 2] = c[2]; img.data[k + 3] = 255; }
-        oc.putImageData(img, 0, 0); ctx.imageSmoothingEnabled = false; ctx.drawImage(off, 0, 0, W * px, H * px); };
-      addLive(el, 15, draw); draw(0);
-    },
-    ascii() {
-      const st = canvasIn(el), ch = " .:-=+*#%@";
-      const draw = t => { const { ctx, w, h } = st; if (!w) return; ctx.fillStyle = p.bg; ctx.fillRect(0, 0, w, h); ctx.font = `12px ${stack(T.pair.m).replace(/&quot;/g, '"')}`; ctx.fillStyle = p.ac;
-        for (let y = 12; y < h; y += 14) for (let x = 0; x < w; x += 8) { const v = noise(x * .02, y * .02, t * .00025); ctx.fillText(ch[Math.min(9, v * 10 | 0)], x, y); } };
-      addLive(el, 12, draw); draw(0);
-    },
-    grain() {
-      const L = esc((b.name[0] || "A").toUpperCase());
-      el.innerHTML = `<div class="sg-glyph" style="color:${p.ac};mix-blend-mode:${dark ? "screen" : "multiply"};font-size:min(80cqh,95%)">${L}</div><div class="sg-glyph" style="color:${p.ac2};mix-blend-mode:${dark ? "screen" : "multiply"};transform:translate(6px,4px)">${L}</div>`;
-      el.querySelectorAll(".sg-glyph").forEach(g => g.style.fontSize = (el.clientHeight * .95 || 300) + "px");
-      const st = canvasIn(el, s => { const { ctx, w, h } = s; if (w < 1 || h < 1) return; const im = ctx.createImageData(Math.max(1, w | 0), Math.max(1, h | 0)); for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 22; } ctx.putImageData(im, 0, 0); });
-      st.cv.style.mixBlendMode = "overlay";
-    },
-    outline() {
-      const nm = esc(b.name);
-      el.innerHTML = `<div class="sg-outline"><span class="o">${nm}</span><span class="f">${nm}</span></div>`;
-      const fit = () => { const s = Math.min(el.clientHeight * .5, el.clientWidth / Math.max(3, b.name.length) * 1.5); el.querySelectorAll(".sg-outline span").forEach(x => x.style.fontSize = s + "px"); };
-      new ResizeObserver(fit).observe(el); fit();
-    },
-    marquee() {
-      const words = b.items.concat(b.items).map(esc).join(" ✦ ");
-      el.innerHTML = `<div class="sg-marq" style="top:28%;transform:rotate(-6deg);background:${p.ac};color:${p.acfg}"><div class="tr" style="font-size:min(6cqh,40px)"><span>${words}</span><span>${words}</span></div></div>
-        <div class="sg-marq b" style="top:56%;transform:rotate(4deg);background:${p.tx};color:${p.bg}"><div class="tr" style="font-size:min(6cqh,40px)"><span>${words}</span><span>${words}</span></div></div>`;
-    },
-    numbers() {
-      const roomy = (el.clientHeight || 300) > 140;
-      el.innerHTML = `<div class="sg-num" style="font-size:${(el.clientHeight || 300) * .95}px">01</div>${(roomy ? b.items : []).slice(0, 3).map((x, i) => `<span class="mo" style="position:absolute;left:8%;top:${12 + i * 12}%;color:var(--m-tx)">0${i + 1} / ${esc(x)}</span>`).join("")}`;
-    },
-    hairline() {
-      const v = [...Array(7)].map((_, i) => `<line x1="${(i + 1) * 12.5}%" y1="0" x2="${(i + 1) * 12.5}%" y2="100%" style="animation-delay:${i * 90}ms"/>`).join("");
-      const hz = [...Array(5)].map((_, i) => `<line x1="0" y1="${(i + 1) * 16.6}%" x2="100%" y2="${(i + 1) * 16.6}%" style="animation-delay:${300 + i * 90}ms"/>`).join("");
-      el.innerHTML = `<div class="sg-hair sg-fill"><svg aria-hidden="true"><g stroke="${p.ln}" stroke-width="1" fill="none">${v}${hz}</g><rect x="25%" y="33.2%" width="37.5%" height="33.2%" fill="none" stroke="${p.ac}" stroke-width="2" style="animation-delay:900ms"/></svg></div>`;
-      el.style.background = p.bg;
-    },
-    glyph() {
-      el.innerHTML = `<div class="sg-glyph">${esc((b.name[0] || "A").toUpperCase())}</div>`;
-      const g = el.firstChild, fit = () => g.style.fontSize = Math.max(el.clientHeight, el.clientWidth * .7) * 1.05 + "px";
-      new ResizeObserver(fit).observe(el); fit();
-    },
-    shapes() {
-      el.innerHTML = `<div class="sg-shape" style="left:8%;top:12%;width:44%;aspect-ratio:1;border-radius:50%;background:${p.ac}"></div>
-        <div class="sg-shape" style="right:6%;top:8%;width:30%;aspect-ratio:2/1;border-radius:999px 999px 0 0;background:${p.ac2};animation-duration:30s"></div>
-        <div class="sg-shape" style="right:14%;bottom:10%;width:26%;aspect-ratio:1;background:${p.tx};animation-direction:reverse"></div>
-        <div style="position:absolute;left:30%;bottom:6%;width:22%;aspect-ratio:1;background:${p.ac2};clip-path:polygon(50% 0,100% 100%,0 100%)"></div>`;
-    },
-    tickets() {
-      el.innerHTML = b.items.slice(0, 3).map((x, i) => `<div class="sg-ticket" style="top:${16 + i * 22}%;transform:rotate(${(i - 1) * 4}deg);z-index:${3 - i}"><span class="mo">No. 0${i + 1}</span><strong style="font-family:var(--m-fd);font-size:max(13px,2.4cqi);color:var(--m-tx)">${esc(x)}</strong></div>`).join("");
-      el.onmouseenter = () => el.querySelectorAll(".sg-ticket").forEach((t, i) => t.style.transform = `rotate(${(i - 1) * 9}deg) translateX(${(i - 1) * 14}px)`);
-      el.onmouseleave = () => el.querySelectorAll(".sg-ticket").forEach((t, i) => t.style.transform = `rotate(${(i - 1) * 4}deg)`);
-    },
-    blob() { el.innerHTML = `<div class="sg-blob"></div>`; el.style.background = "transparent"; },
-  };
-  (S2[id] || S2.glyph)();
-}
-const mountAll = root => root.querySelectorAll("[data-sig]").forEach(el => { const card = el.closest("[data-tok]"); mountSig(el, el.dataset.sig, card ? card._T : tokens()); });
-
-/* ---------------- step: brief ---------------- */
-const F = (id, label, help, opts = {}) => `<div class="field"><label for="f-${id}">${label}</label>${opts.area
-  ? `<textarea id="f-${id}" data-k="${id}" ${opts.ltr ? 'dir="ltr"' : ""} placeholder="${esc(opts.ph || "")}">${esc(S.brief[id])}</textarea>`
-  : `<input id="f-${id}" data-k="${id}" ${opts.ltr ? 'dir="ltr"' : ""} value="${esc(S.brief[id])}" placeholder="${esc(opts.ph || "")}">`}${help ? `<small>${help}</small>` : ""}</div>`;
-
-function renderBrief(main) {
-  main.innerHTML = `<div class="head"><div><h1>First, what are we designing?</h1><p>Every sample in the next rounds is built from this copy, so keep it short and real. The form is filled with the YT Jobs example.</p></div></div>
-  <div class="brief"><div class="card">
-    <div class="row2">${F("name", "Product name", "", { ltr: 1 })}${F("pageType", "Page type", "e.g. landing page, portfolio, shop", { ltr: 1 })}</div>
-    ${F("what", "The product in one sentence", "", { ltr: 1, area: 1 })}
-    ${F("audience", "Audience", "", { ltr: 1 })}
-    <div class="row2">${F("headline", "Sample headline", "Shown in every sample", { ltr: 1 })}${F("cta", "Primary button text", "", { ltr: 1 })}</div>
-    ${F("items", "A few real items", "Comma-separated; used in lists and ribbons", { ltr: 1 })}
-    <div class="section-label">Keep your brand (optional)</div>
-    <div class="row2">${F("keepFonts", "Current fonts", "e.g. Poppins, Inter (Google Fonts)", { ltr: 1, ph: "Display, Body" })}${F("keepColors", "Current colors", "Hex codes, comma-separated", { ltr: 1, ph: "#111111, #ffffff, #ff0033" })}</div>
-    ${F("notes", "Extra notes for the prompt", "Anything the design must respect", { area: 1 })}
-  </div>
-  <div class="card"><div class="section-label">Copy preview</div><div class="preview-mini" id="brief-prev" data-tok></div>
-    <ol class="how"><li><b>01</b><span>Each round shows six large, live samples. Click the one you like.</span></li>
-    <li><b>02</b><span>Use “No” to reject what you don’t want; rejections go into the prompt’s AVOID list.</span></li>
-    <li><b>03</b><span>“More options” brings fresh samples from the library.</span></li>
-    <li><b>04</b><span>Each round is drawn with your earlier picks, so you judge real combinations.</span></li></ol></div></div>`;
-  const prev = $("#brief-prev");
-  const paint = () => { const T = tokens(); prev._T = T; prev.innerHTML = heroHTML(T); mountAll(prev); };
-  paint();
-  let tm; main.querySelectorAll("[data-k]").forEach(inp => inp.addEventListener("input", () => { S.brief[inp.dataset.k] = inp.value; save(); clearTimeout(tm); tm = setTimeout(paint, 300); }));
-}
-
-
-/* ---------------- step: discover ---------------- */
-const D = () => S.discover;
-function discoverTarget() {
+/* ---------------- discover → ranking ---------------- */
+function target() {
   const d = D(), t = [], w = [];
-  SLIDERS.forEach((s, i) => { const v = d.sliders[s.id]; t[i] = 0; w[i] = 0; if (typeof v === "number") { t[i] += v; w[i] += 1; } });
-  const pl = PLACES.find(p => p.id === d.place);
-  if (pl) pl.vec.forEach((v, i) => { t[i] += v * .6; w[i] += .6; });
+  SLIDERS.forEach((s, i) => { const v = d.sliders[s.id]; t[i] = 0; w[i] = 0; if (typeof v === "number") { t[i] = v; w[i] = 1; } });
+  const pl = PLACES.find(p => p.id === d.place); if (pl) pl.vec.forEach((v, i) => { t[i] += v * .6; w[i] += .6; });
   if (!w.some(Boolean)) return null;
   return t.map((v, i) => w[i] ? { v: v / w[i], w: w[i] } : null);
 }
-function dirScore(id) {
-  const tg = discoverTarget(), vec = DIR_VEC[id]; if (!tg || !vec) return 0;
-  let s = 0; tg.forEach((x, i) => { if (x) s -= x.w * (vec[i] - x.v) ** 2; }); return s;
+function score(src) { const tg = target(); if (!tg) return 0; let s = 0; tg.forEach((x, i) => { if (x) s -= x.w * (src.vec[i] - x.v) ** 2; }); return s; }
+const sliderWords = () => SLIDERS.map(s => { const v = D().sliders[s.id]; if (typeof v !== "number" || v === 0) return null; return `${Math.abs(v) === 2 ? "strongly" : "leaning"} ${(v < 0 ? s.left : s.right).toLowerCase()}`; }).filter(Boolean);
+
+/* ---------------- palettes, type, vars ---------------- */
+function fixPal(p) {
+  p = { ...(p || {}) }; ["bg", "fg", "muted", "line", "accent", "accent2"].forEach(k => { if (!HEX.test(p[k] || "")) p[k] = null; });
+  p.bg = p.bg || "#f4f2ed"; p.fg = p.fg || (lum(p.bg) > .4 ? "#141414" : "#f2f0ea");
+  if (contrast(p.fg, p.bg) < 4.5) p.fg = contrast("#111111", p.bg) > contrast("#f5f5f2", p.bg) ? "#111111" : "#f5f5f2";
+  p.muted = p.muted || mixHex(p.fg, p.bg, .4);
+  let t = .4; while (contrast(p.muted, p.bg) < 3.2 && t > 0) { t -= .08; p.muted = mixHex(p.fg, p.bg, Math.max(0, t)); }
+  p.line = p.line || mixHex(p.bg, p.fg, .16); p.accent = p.accent || p.fg; p.accent2 = p.accent2 || p.muted;
+  return p;
 }
-const discoverSig = () => JSON.stringify([D().sliders, D().place]);
-const sliderWords = () => SLIDERS.map(s => { const v = D().sliders[s.id]; if (typeof v !== "number" || v === 0) return null;
-  return `${Math.abs(v) === 2 ? "strongly" : "leans"} ${(v < 0 ? s.left : s.right).toLowerCase()}`; }).filter(Boolean);
-function localThesis() {
-  const d = D(), b = S.brief, pl = PLACES.find(p => p.id === d.place), words = sliderWords();
-  const parts = [];
-  parts.push(`${b.name || "The product"} should make ${d.who || b.audience || "its visitors"} feel ${d.feel.length ? d.feel.map(f => f.toLowerCase()).join(" and ") : "clear about what to do"} within five seconds${d.context ? `, arriving ${d.context.toLowerCase()}` : ""}.`);
-  if (words.length || pl) parts.push(`Its character ${words.length ? `is ${words.join(", ")}` : "is defined by restraint"}${pl ? `, with the quality of ${pl.name.toLowerCase()} (${pl.desc.toLowerCase()}) as a feeling, never as imagery` : ""}.`);
-  parts.push(`Everything on the page serves one action: ${d.must || b.cta || "the primary call to action"}.`);
-  return parts.join(" ");
+function brandType() {
+  const f = S.brief.keepFonts.split(/[,،/+]/).map(s => s.trim()).filter(Boolean);
+  return f.length ? { display: f[0], dw: 700, body: f[1] || f[0], mono: f[2] || "IBM Plex Mono", dc: "none", dt: "-0.02em", lh: 1.02, brand: true } : null;
 }
+function brandPal() {
+  const hs = (S.brief.keepColors.match(/#?[0-9a-f]{6}\b/gi) || []).map(h => "#" + h.replace("#", "").toLowerCase());
+  if (hs.length < 2) return null;
+  const byL = hs.slice().sort((a, b) => lum(b) - lum(a)), bg = byL[0], fg = byL[byL.length - 1], rest = hs.filter(h => h !== bg && h !== fg);
+  return { ...fixPal({ bg, fg, accent: rest[0] || fg, accent2: rest[1] || rest[0] || fg }), brand: true };
+}
+function vars(p, t) {
+  [t.display, t.body, t.mono].forEach(loadFont);
+  return [`--bg:${p.bg}`, `--fg:${p.fg}`, `--muted:${p.muted}`, `--line:${p.line}`, `--accent:${p.accent}`, `--accent2:${p.accent2}`,
+    `--display:${stack(t.display)}`, `--body:${stack(t.body)}`, `--mono:${stack(t.mono)}`, `--dw:${t.dw}`, `--dc:${t.dc || "none"}`, `--dt:${t.dt || "-0.02em"}`, `--lh:${t.lh || 1.02}`]
+    .join(";").replace(/"/g, "&quot;");
+}
+
+/* ---------------- sketches ---------------- */
+function localSketch(srcId, layout) {
+  const b = B();
+  return `<div class="sketch">${STUDY.svg(srcId, b)}<div class="ov ${layout}"><span class="eyebrow">${esc(b.name)}</span><h2>${esc(b.head)}</h2>${b.what ? `<p>${esc(b.what)}</p>` : ""}<span class="act">${esc(b.cta)} →</span></div></div>`;
+}
+function sanitize(html) {
+  html = String(html || "").replace(/^[\s\S]*?```[a-z]*\s*/i, m => /```/.test(m) ? "" : m).replace(/```[\s\S]*$/, "").trim();
+  if (window.DOMPurify) html = window.DOMPurify.sanitize(html, { FORCE_BODY: true, ADD_TAGS: ["style"], FORBID_TAGS: ["script", "iframe", "object", "embed", "link", "meta", "base", "form", "input", "textarea", "button", "img", "image", "video", "audio", "foreignObject"], FORBID_ATTR: ["srcset", "action", "formaction"] });
+  else html = html.replace(/<(script|iframe|object|embed|form|video|audio|textarea)\b[\s\S]*?<\/\1\s*>/gi, "").replace(/<\/?(script|iframe|object|embed|link|meta|base|form|img|image|video|audio|input|button|textarea|foreignObject)\b[^>]*>/gi, "").replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "").replace(/javascript:/gi, "");
+  return html.replace(/@import[^;]+;/gi, "").replace(/@font-face\s*\{[^}]*\}/gi, "").replace(/url\(\s*(['"]?)(?!#|data:)[^)]*\)/gi, "none").replace(/position\s*:\s*fixed/gi, "position:absolute");
+}
+const sizer = new ResizeObserver(es => es.forEach(e => { const f = e.target.querySelector(".frame"); if (f) f.style.transform = `scale(${e.contentRect.width / 1200})`; }));
+function mountStage(stage, { html, claude, styleVars }) {
+  if (!stage) return;
+  stage.innerHTML = `<div class="frame" style="${styleVars}"></div>`;
+  const frame = stage.firstElementChild;
+  if (claude) {
+    const host = document.createElement("div"); host.style.cssText = "width:1200px;height:750px;position:relative";
+    frame.appendChild(host);
+    host.attachShadow({ mode: "open" }).innerHTML = `<style>:host{display:block;width:1200px;height:750px;overflow:hidden}${reduce ? "*{animation:none!important;transition:none!important}" : ""}</style>${sanitize(html)}`;
+  } else frame.innerHTML = html;
+  frame.style.transform = `scale(${(stage.clientWidth || 1200) / 1200})`;
+  sizer.observe(stage);
+}
+
+/* ---------------- concept helpers ---------------- */
+const concept = () => S.concepts[S.conceptPick] || null;
+const conceptType = c => {
+  const f = c.fonts || {}, src = srcById(c.sources[0]) || SOURCES[0];
+  return f.display ? { display: f.display, dw: +f.display_weight || 400, body: f.body || f.display, mono: f.mono || "IBM Plex Mono", dc: f.display_case === "uppercase" ? "uppercase" : "none", dt: "-0.02em", lh: 1.02 } : src.fonts[0];
+};
+function palVariants(c) {
+  const cp = fixPal(c.palette), out = [{ label: "Concept palette", p: cp }];
+  const bp = brandPal(); if (bp) out.unshift({ label: "Your brand colors", p: bp });
+  c.sources.forEach(id => { const s = srcById(id); if (s) s.pals.forEach((p, i) => out.push({ label: `${s.name} · ${i + 1}`, p: fixPal(p) })); });
+  out.push({ label: "Concept, inverted", p: fixPal({ ...cp, bg: cp.fg, fg: cp.bg, muted: null, line: null }) });
+  const seen = new Set(); return out.filter(v => { const k = v.p.bg + v.p.accent; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 6);
+}
+function typeVariants(c) {
+  const out = [{ label: "Concept type", t: conceptType(c) }];
+  const bt = brandType(); if (bt) out.unshift({ label: "Your brand fonts", t: bt });
+  c.sources.forEach(id => { const s = srcById(id); if (s) s.fonts.forEach(t => out.push({ label: `${t.display} + ${t.body}`, t })); });
+  const seen = new Set(); return out.filter(v => { const k = v.t.display + v.t.body; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 6);
+}
+const curPal = () => { const v = palVariants(concept()); return (v[S.refine.pal] || v[0]).p; };
+const curType = () => { const v = typeVariants(concept()); return (v[S.refine.type] || v[0]).t; };
+function sketchFor(c, i, p, t) {
+  const html = S.sketches[i];
+  return html ? { html, claude: true, styleVars: vars(p, t) } : { html: localSketch(c.sources[0], c.layout || (srcById(c.sources[0]) || {}).layout || "left"), claude: false, styleVars: vars(p, t) };
+}
+
+/* ---------------- step: brief ---------------- */
+const F = (id, label, help, o = {}) => `<div class="field"><label for="f-${id}">${label}</label>${o.area
+  ? `<textarea id="f-${id}" data-k="${id}" placeholder="${esc(o.ph || "")}">${esc(S.brief[id])}</textarea>`
+  : `<input id="f-${id}" data-k="${id}" value="${esc(S.brief[id])}" placeholder="${esc(o.ph || "")}">`}${help ? `<small>${help}</small>` : ""}</div>`;
+function renderBrief(main) {
+  main.innerHTML = `<div class="head"><div><h1>First, what are we designing?</h1><p>Every sketch is built from this copy, so keep it short and real. The form is filled with the YT Jobs example.</p></div></div>
+  <div class="brief"><div class="card">
+    ${F("name", "Product name", "")}${F("what", "The product in one sentence", "", { area: 1 })}${F("audience", "Audience", "")}
+    <div class="row2">${F("headline", "Sample headline", "Shown in every sketch")}${F("cta", "Primary action", "")}</div>
+    ${F("items", "A few real items", "Comma-separated; some art sources use them")}
+    <div class="section-label">Keep your brand (optional)</div>
+    <div class="row2">${F("keepFonts", "Current fonts", "e.g. Poppins, Inter (Google Fonts)", { ph: "Display, Body" })}${F("keepColors", "Current colors", "Hex codes, comma-separated", { ph: "#111111, #ffffff, #ff0033" })}</div>
+    ${F("notes", "Notes for the prompt", "Anything the design must respect", { area: 1 })}
+  </div>
+  <div class="card"><div class="section-label">How this works</div>
+    <div class="stage static" id="brief-prev" aria-hidden="true"></div>
+    <ol class="how"><li><b>01</b><span>Discover: a few abstract questions, starting with the truth about your product that nobody puts on a homepage.</span></li>
+    <li><b>02</b><span>Art sources: pick up to three bodies of work whose <em>operation</em> you're drawn to. Not their look.</span></li>
+    <li><b>03</b><span>Concepts: Claude collides your truth with the art and sketches four concepts, each with one rule that generates the page.</span></li>
+    <li><b>04</b><span>Refine palette, type and intensity inside the concept you pick, then take the prompt.</span></li></ol></div></div>`;
+  const prev = $("#brief-prev"), s = srcById("miniature");
+  const paint = () => mountStage(prev, { html: localSketch(s.id, s.layout), claude: false, styleVars: vars(fixPal(s.pals[0]), s.fonts[0]) });
+  paint(); let tm;
+  main.querySelectorAll("[data-k]").forEach(inp => inp.addEventListener("input", () => { S.brief[inp.dataset.k] = inp.value; save(); clearTimeout(tm); tm = setTimeout(paint, 300); renderBar(); }));
+}
+
+/* ---------------- step: discover ---------------- */
 function renderDiscover(main) {
-  const d = D(), b = S.brief;
-  if (!d.who) d.who = b.audience; if (!d.must) d.must = b.cta;
+  const d = D(), b = S.brief; if (!d.who) d.who = b.audience;
   const seg = s => `<div class="sl" role="group" aria-label="${s.left} to ${s.right}"><span class="l">${s.left}</span><div class="seg">${[-2, -1, 0, 1, 2].map(v =>
     `<button data-sl="${s.id}" data-v="${v}" aria-pressed="${d.sliders[s.id] === v}" aria-label="${v === 0 ? "In between" : (Math.abs(v) === 2 ? "Strongly " : "Somewhat ") + (v < 0 ? s.left : s.right)}" style="--d:${[16, 11, 6, 11, 16][v + 2]}px"></button>`).join("")}</div><span class="r">${s.right}</span></div>`;
-  const chips = (key, list, multi) => `<div class="chipset" data-chips="${key}" data-multi="${multi ? 1 : 0}">${list.map(x => `<button data-val="${esc(x)}" aria-pressed="${multi ? d[key].includes(x) : d[key] === x}">${esc(x)}</button>`).join("")}</div>`;
-  main.innerHTML = `<div class="head"><div><h1>Before the visuals: what is this, and who is it for?</h1><p>Abstract questions, quick answers. They rank the samples you will see next and give the prompt a point of view. Everything here is optional.</p></div></div>
+  main.innerHTML = `<div class="head"><div><h1>Before the visuals: what is true here?</h1><p>The concepts grow from these answers. The first question matters most; everything else is optional.</p></div></div>
   <div class="disc">
-    <section class="card"><h2>The character</h2><p>Where does ${esc(b.name || "the product")} sit between each pair? Leave a row untouched if it doesn't matter.</p><div class="sliders">${SLIDERS.map(seg).join("")}</div></section>
-    <section class="card"><h2>If it were a place</h2><p>Pick the place whose atmosphere is closest. This shapes the feeling, not the imagery.</p>
+    <section class="card"><h2>The truth</h2><p class="lead">What is true about ${esc(b.name || "this product")} that nobody puts on the homepage? A tension, a paradox, something people feel but don't say.</p>
+      <label class="qlabel" for="q-truth" style="margin-top:0">The truth</label>
+      <textarea class="truth" id="q-truth" data-q="truth" placeholder="e.g. The people who make a video great are never in the video.">${esc(d.truth)}</textarea></section>
+    <section class="card"><h2>The character</h2><p class="lead">Where does it sit between each pair? Skip rows that don't matter.</p><div class="sliders">${SLIDERS.map(seg).join("")}</div></section>
+    <section class="card"><h2>If it were a place</h2><p class="lead">This shapes the atmosphere, never the imagery.</p>
       <div class="tiles">${PLACES.map(p => `<button class="tile-btn" data-place="${p.id}" aria-pressed="${d.place === p.id}"><strong>${p.name}</strong><span>${p.desc}</span></button>`).join("")}</div></section>
-    <section class="card"><h2>The first five seconds</h2><p>What should a visitor feel before they read anything? Pick up to two.</p>${chips("feel", FEELINGS, true)}</section>
-    <section class="card"><h2>The audience moment</h2><p>Who arrives, in what situation, and what must they do.</p>
-      <label class="qlabel" for="q-who">Who arrives</label><div class="field"><input id="q-who" data-q="who" value="${esc(d.who)}"></div>
-      <span class="qlabel">Their situation</span>${chips("context", CONTEXTS, false)}
-      <span class="qlabel">Device</span>${chips("device", DEVICES, false)}
-      <label class="qlabel" for="q-must">The one thing they must do</label><div class="field"><input id="q-must" data-q="must" value="${esc(d.must)}"></div>
-      <label class="qlabel" for="q-never">It must never look like…</label><div class="field"><input id="q-never" data-q="never" value="${esc(d.never)}" placeholder="e.g. a generic freelancer marketplace"></div></section>
-    <section class="card"><h2>About you, the designer</h2><p>Claude reads these as references to learn from, never to copy.</p>
-      <label class="qlabel" for="q-love">Something you love that isn't a website</label><div class="field"><input id="q-love" data-q="love" value="${esc(d.love)}" placeholder="a book cover, a building, an album, an object"></div>
-      <label class="qlabel" for="q-tired">What are you tired of seeing?</label><div class="field"><input id="q-tired" data-q="tired" value="${esc(d.tired)}" placeholder="e.g. bento grids, gradient blobs"></div>
-      <label class="check"><input type="checkbox" id="q-remember" ${d.remember ? "checked" : ""}> Remember these two answers for my next session</label></section>
-    <section class="card"><h2>Design thesis</h2><p>Three sentences the whole design has to serve. Draft it from your answers, then edit freely.</p>
-      <label for="q-thesis" class="qlabel">Thesis</label><textarea class="thesis" id="q-thesis" placeholder="Draft it from your answers, or write your own.">${esc(d.thesis)}</textarea>
-      <div class="thesis-tools">${sample ? `<button class="btn accent" id="t-claude">Draft with Claude</button>` : ""}<button class="btn" id="t-local">Draft from my answers</button><span class="note" id="t-note">${d.thesisSource === "claude" ? "Drafted by Claude." : ""}</span></div></section>
+    <section class="card"><h2>The first five seconds</h2><p class="lead">What should a visitor feel before reading anything? Up to two.</p>
+      <div class="chipset" data-chips="feel">${FEELINGS.map(x => `<button data-val="${x}" aria-pressed="${d.feel.includes(x)}">${x}</button>`).join("")}</div></section>
+    <section class="card"><h2>Who, and what to avoid</h2>
+      <div class="field"><label for="q-who">Who arrives</label><input id="q-who" data-q="who" value="${esc(d.who)}"></div>
+      <div class="field"><label for="q-never">It must never look like…</label><input id="q-never" data-q="never" value="${esc(d.never)}" placeholder="e.g. a generic freelancer marketplace"></div></section>
+    <section class="card"><h2>About you</h2><p class="lead">Read as principles to learn from, never as a look to copy.</p>
+      <div class="field"><label for="q-love">A work you love that isn't a website</label><input id="q-love" data-q="love" value="${esc(d.love)}" placeholder="a building, an album cover, a book, an object"></div>
+      <div class="field"><label for="q-tired">What are you tired of seeing?</label><input id="q-tired" data-q="tired" value="${esc(d.tired)}" placeholder="e.g. bento grids, gradient blobs"></div>
+      <label class="check"><input type="checkbox" id="q-remember" ${d.remember ? "checked" : ""}> Remember these two answers next time</label></section>
   </div>`;
-  const keepDesigner = () => { if (d.remember) store.set("designer", { love: d.love, tired: d.tired, remember: true }); else store.set("designer", { remember: false }); };
+  const keep = () => store.set("designer", d.remember ? { love: d.love, tired: d.tired, remember: true } : { remember: false });
   main.querySelectorAll("[data-sl]").forEach(btn => btn.onclick = () => {
     const id = btn.dataset.sl, v = +btn.dataset.v; d.sliders[id] = d.sliders[id] === v ? undefined : v;
-    btn.parentElement.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", d.sliders[id] === +x.dataset.v)); save(); renderSteps();
+    btn.parentElement.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", d.sliders[id] === +x.dataset.v)); save();
   });
-  main.querySelectorAll("[data-place]").forEach(btn => btn.onclick = () => {
-    d.place = d.place === btn.dataset.place ? null : btn.dataset.place;
-    main.querySelectorAll("[data-place]").forEach(x => x.setAttribute("aria-pressed", d.place === x.dataset.place)); save();
-  });
-  main.querySelectorAll("[data-chips]").forEach(set => set.onclick = e => {
-    const btn = e.target.closest("button"); if (!btn) return; const key = set.dataset.chips, val = btn.dataset.val;
-    if (set.dataset.multi === "1") { const cur = new Set(d[key]); cur.has(val) ? cur.delete(val) : cur.add(val); d[key] = [...cur].slice(-2); }
-    else d[key] = d[key] === val ? null : val;
-    set.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", set.dataset.multi === "1" ? d[key].includes(x.dataset.val) : d[key] === x.dataset.val)); save();
-  });
-  main.querySelectorAll("[data-q]").forEach(inp => inp.oninput = () => { d[inp.dataset.q] = inp.value; save(); if (inp.dataset.q === "love" || inp.dataset.q === "tired") keepDesigner(); });
-  $("#q-remember").onchange = e => { d.remember = e.target.checked; keepDesigner(); save(); };
-  const th = $("#q-thesis"); th.oninput = () => { d.thesis = th.value; d.thesisSource = "edited"; save(); };
-  $("#t-local").onclick = () => { d.thesis = localThesis(); d.thesisSource = "local"; th.value = d.thesis; $("#t-note").textContent = "Drafted from your answers. Edit freely."; save(); };
-  if ($("#t-claude")) $("#t-claude").onclick = async () => {
-    const btn = $("#t-claude"), note = $("#t-note"); btn.disabled = true; note.textContent = "Claude is thinking…";
-    const ask = `Write a design thesis for a web page: exactly three plain sentences that every design decision must serve. Base it only on these answers from the designer. Use the character and place as qualities, never as literal imagery. No marketing words (seamless, elevate, unlock), no invented facts or numbers. English. Output only the three sentences.
-
-Product: ${b.name} — ${b.what}
-Audience: ${d.who || b.audience}
-Situation: ${d.context || "not given"}; device: ${d.device || "not given"}
-Character: ${sliderWords().join(", ") || "not given"}
-Feels like: ${(PLACES.find(p => p.id === d.place) || {}).name || "not given"}
-First five seconds: ${d.feel.join(", ") || "not given"}
-The one action: ${d.must || b.cta}
-Must never look like: ${d.never || "not given"}`;
-    try { const { text } = await sample(ask, { cache: false, onText: ({ text }) => { th.value = text; } }); d.thesis = text.trim(); d.thesisSource = "claude"; th.value = d.thesis; note.textContent = "Drafted by Claude. Edit freely."; save(); }
-    catch (e) { note.textContent = e?.code === "not_granted" ? "Claude access wasn’t allowed — use “Draft from my answers”." : e?.code === "rate_limited" ? "Usage limit reached for now — try later." : "Couldn’t reach Claude — try again or draft from your answers."; }
-    finally { btn.disabled = false; }
-  };
+  main.querySelectorAll("[data-place]").forEach(btn => btn.onclick = () => { d.place = d.place === btn.dataset.place ? null : btn.dataset.place; main.querySelectorAll("[data-place]").forEach(x => x.setAttribute("aria-pressed", d.place === x.dataset.place)); save(); });
+  $("[data-chips=feel]").onclick = e => { const btn = e.target.closest("button"); if (!btn) return; const s = new Set(d.feel); s.has(btn.dataset.val) ? s.delete(btn.dataset.val) : s.add(btn.dataset.val); d.feel = [...s].slice(-2);
+    e.currentTarget.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", d.feel.includes(x.dataset.val))); save(); };
+  main.querySelectorAll("[data-q]").forEach(inp => inp.oninput = () => { d[inp.dataset.q] = inp.value; save(); if (inp.dataset.q === "love" || inp.dataset.q === "tired") keep(); });
+  $("#q-remember").onchange = e => { d.remember = e.target.checked; keep(); save(); };
 }
 
-/* ---------------- rounds ---------------- */
-const ROUNDS = {
-  dir: { title: "Which direction fits your product?", sub: "Each sample is a complete direction: color, type, layout and signature. Judge the overall feel; the details change in later rounds.",
-    pool: () => DIRECTIONS, label: o => o.fa, desc: o => o.en, tok: o => tokens({ dir: o.id, type: o.pair, pal: o.pal, sig: o.sig }), render: heroHTML },
-  type: { title: "Which type pairing?", sub: "All shown in the colors of the direction you picked.",
-    pool: () => [brandPair(), ...PAIRS].filter(Boolean), label: o => o.fa, desc: o => `${o.d} + ${o.b}`, tok: o => tokens({ type: o.id, pal: S.picks.pal || dirOf(S.picks.dir)?.pal }), render: specimenHTML },
-  pal: { title: "Which palette?", sub: "Each palette is applied to the same page, with your type.",
-    pool: () => [brandPalette(), ...PALETTES].filter(Boolean), label: o => o.fa, desc: o => o.en, tok: o => tokens({ pal: o.id }), render: heroHTML },
-  struct: { title: "What structure should the page have?", sub: "The order and number of sections. These are skeletons, not final designs.", three: true,
-    pool: () => STRUCTURES, label: o => o.fa, desc: o => o.desc, tok: () => tokens(), render: (T, o) => wireHTML(o, T) },
-  sig: { title: "Which signature element?", sub: "The one thing people will remember the page by. Samples are live.",
-    pool: () => SIGS, label: o => o.fa, desc: o => o.quiet ? "Quiet, suits minimal pages" : "More energetic", tok: o => tokens({ sig: o.id }), render: sigStageHTML },
-};
-
-function ensureShown(kind) {
-  const pool = ROUNDS[kind].pool().map(o => o.id), nope = new Set(S.nope[kind] || []);
-  let shown = (S.shown[kind] || []).filter(id => pool.includes(id));
-  if (kind === "dir" && S.discSig !== discoverSig()) { S.discSig = discoverSig(); shown = []; }
-  if (!shown.length && kind === "dir" && discoverTarget()) {
-    const ranked = pool.filter(id => !nope.has(id)).sort((x, y) => dirScore(y) - dirScore(x));
-    const top = ranked.slice(0, 4), wild = shuffle(ranked.slice(4)).slice(0, 2);
-    shown = top.concat(wild); if (S.picks.dir && !shown.includes(S.picks.dir)) shown[5] = S.picks.dir;
+/* ---------------- step: sources ---------------- */
+const discSig = () => JSON.stringify([D().sliders, D().place]);
+function ensureShown() {
+  const nope = new Set(S.srcNope);
+  if (S.srcSig !== discSig()) { S.srcSig = discSig(); S.srcShown = []; }
+  let shown = S.srcShown.filter(id => srcById(id));
+  if (!shown.length) {
+    const ranked = SOURCES.filter(s => !nope.has(s.id)).sort((a, b) => score(b) - score(a)).map(s => s.id);
+    shown = target() ? ranked.slice(0, 4).concat(shuffle(ranked.slice(4)).slice(0, 2)) : shuffle(ranked).slice(0, 6);
+    S.srcPicks.forEach(id => { if (!shown.includes(id)) shown.unshift(id); });
+    shown = shown.slice(0, Math.max(6, S.srcPicks.length));
   }
-  if (!shown.length) { const lead = pool.includes("brand") ? ["brand"] : []; shown = lead.concat(shuffle(pool.filter(id => id !== "brand" && !nope.has(id)))).slice(0, 6); }
-  S.shown[kind] = shown; return shown;
+  return (S.srcShown = shown);
 }
-function reshuffle(kind) {
-  const pool = ROUNDS[kind].pool().map(o => o.id), nope = new Set(S.nope[kind] || []), cur = S.shown[kind] || [];
-  const keep = cur.filter(id => id === S.picks[kind]);
-  let fresh = shuffle(pool.filter(id => !cur.includes(id) && !nope.has(id) && !keep.includes(id)));
-  if (fresh.length < 6 - keep.length) fresh = fresh.concat(shuffle(pool.filter(id => !keep.includes(id) && !nope.has(id) && !fresh.includes(id))));
-  S.shown[kind] = keep.concat(fresh).slice(0, 6); save(); render();
+function moreSources() {
+  const nope = new Set(S.srcNope), now = new Set(S.srcShown);
+  let next = shuffle(SOURCES.map(s => s.id).filter(id => !now.has(id) && !nope.has(id) && !S.srcPicks.includes(id)));
+  if (next.length < 6) next = next.concat(shuffle(SOURCES.map(s => s.id).filter(id => !nope.has(id) && !S.srcPicks.includes(id) && !next.includes(id))));
+  S.srcShown = S.srcPicks.concat(next).slice(0, Math.max(6, S.srcPicks.length + 3)); save(); render();
 }
-
-function optCard(kind, o, T, html, used, fit) {
-  const picked = S.picks[kind] === o.id, noped = (S.nope[kind] || []).includes(o.id);
-  return `<article class="opt ${picked ? "picked" : ""} ${noped ? "noped" : ""}" data-id="${esc(o.id)}">
-    <span class="badge">Your pick</span>
-    <button class="stage" data-act="pick" aria-label="Pick ${esc(ROUNDS[kind] ? ROUNDS[kind].label(o) : o.fa)}" data-tok>${html}</button>
-    <div class="meta"><div class="txt"><strong>${esc(ROUNDS[kind] ? ROUNDS[kind].label(o) : o.fa)}${fit ? `<span class="used fit">fits your answers</span>` : ""}${used ? `<span class="used">used before</span>` : ""}</strong><span>${esc(ROUNDS[kind] ? ROUNDS[kind].desc(o) : o.desc)}</span></div>
-    <button class="icon-btn nope ${noped ? "on" : ""}" data-act="nope" aria-pressed="${noped}">✕ No</button>
-    <button class="icon-btn pick ${picked ? "on" : ""}" data-act="pick" aria-pressed="${picked}">${picked ? "✓ Picked" : "Pick"}</button></div></article>`;
-}
-
-function bindCards(main, kind, map) {
+function renderSources(main) {
+  const ids = ensureShown(), fits = target() ? new Set(SOURCES.slice().sort((a, b) => score(b) - score(a)).slice(0, 5).map(s => s.id)) : new Set();
+  main.innerHTML = `<div class="head"><div><h1>Which works of art speak to this?</h1><p>Each plate is an original study of how a body of work <em>operates</em>. You're choosing the operation, not the look. Pick up to three; reject what feels wrong.</p></div>
+    <div class="legend"><span><b>${S.srcPicks.length}</b> of 3 picked</span><span><b>${SOURCES.length}</b> in the library</span></div></div>
+    <div class="grid">${ids.map(id => { const s = srcById(id), picked = S.srcPicks.includes(id), noped = S.srcNope.includes(id);
+      return `<article class="opt ${picked ? "picked" : ""} ${noped ? "noped" : ""}" data-id="${id}"><span class="badge">Picked</span>
+        <button class="stage" data-act="pick" aria-label="Pick ${esc(s.name)}"></button>
+        <div class="meta"><div class="txt"><strong>${esc(s.name)}${fits.has(id) ? `<span class="tag fit">fits your answers</span>` : ""}</strong><span>after ${esc(s.after)} · ${s.kind}</span></div>
+        <button class="icon-btn nope ${noped ? "on" : ""}" data-act="nope" aria-pressed="${noped}">✕ No</button>
+        <button class="icon-btn pick ${picked ? "on" : ""}" data-act="pick" aria-pressed="${picked}">${picked ? "✓ Picked" : "Pick"}</button></div>
+        <p class="op">${esc(s.op)}</p></article>`; }).join("")}</div>`;
   main.querySelectorAll(".opt").forEach(card => {
-    const id = card.dataset.id, stage = card.querySelector(".stage");
-    stage._T = map[id];
+    const s = srcById(card.dataset.id);
+    mountStage(card.querySelector(".stage"), { html: localSketch(s.id, s.layout), claude: false, styleVars: vars(fixPal(s.pals[0]), s.fonts[0]) });
     card.addEventListener("click", e => {
-      const act = e.target.closest("[data-act]")?.dataset.act; if (!act) return;
-      if (act === "pick") { S.picks[kind] = S.picks[kind] === id ? undefined : id; S.nope[kind] = (S.nope[kind] || []).filter(x => x !== id); }
-      if (act === "nope") { const n = new Set(S.nope[kind] || []); n.has(id) ? n.delete(id) : n.add(id); S.nope[kind] = [...n]; if (S.picks[kind] === id) S.picks[kind] = undefined; }
-      save(); refreshCards(main, kind); renderBar();
+      const act = e.target.closest("[data-act]")?.dataset.act; if (!act) return; const id = s.id;
+      if (act === "pick") {
+        if (S.srcPicks.includes(id)) S.srcPicks = S.srcPicks.filter(x => x !== id);
+        else { if (S.srcPicks.length >= 3) { toast("Three at most — unpick one first"); return; } S.srcPicks.push(id); S.srcNope = S.srcNope.filter(x => x !== id); }
+      }
+      if (act === "nope") { if (S.srcNope.includes(id)) S.srcNope = S.srcNope.filter(x => x !== id); else { S.srcNope.push(id); S.srcPicks = S.srcPicks.filter(x => x !== id); } }
+      save(); render();
     });
   });
-  mountAll(main);
 }
-function refreshCards(main, kind) {
-  main.querySelectorAll(".opt").forEach(card => {
-    const id = card.dataset.id, picked = S.picks[kind] === id, noped = (S.nope[kind] || []).includes(id);
-    card.classList.toggle("picked", picked); card.classList.toggle("noped", noped);
-    const pb = card.querySelector(".icon-btn.pick"), nb = card.querySelector(".icon-btn.nope");
-    pb.classList.toggle("on", picked); pb.setAttribute("aria-pressed", picked); pb.textContent = picked ? "✓ Picked" : "Pick";
-    nb.classList.toggle("on", noped); nb.setAttribute("aria-pressed", noped);
+
+/* ---------------- step: concepts ---------------- */
+const conceptKey = () => JSON.stringify([S.srcPicks, D().truth, S.brief.name, S.brief.what]);
+function farSource() {
+  const pool = SOURCES.filter(s => !S.srcPicks.includes(s.id) && !S.srcNope.includes(s.id));
+  const kinds = new Set(S.srcPicks.map(id => srcById(id).kind)), other = pool.filter(s => !kinds.has(s.kind)), list = other.length ? other : pool;
+  if (!list.length) return null;
+  return target() ? list.slice().sort((a, b) => score(a) - score(b))[Math.floor(Math.random() * Math.min(3, list.length))] : shuffle(list)[0];
+}
+function localConcepts() {
+  const b = B(), d = D(), truth = d.truth.trim() || S.brief.what || `${b.name} exists for ${S.brief.audience}`;
+  const list = S.srcPicks.map(srcById).filter(Boolean), far = farSource();
+  if (far) list.push(far);
+  while (list.length < 4) { const f = farSource(); if (!f || list.includes(f)) break; list.push(f); }
+  return list.slice(0, 4).map(s => ({
+    title: `${s.name}${s === far ? " (wildcard)" : ""}`, sources: [s.id],
+    idea: `${truth.replace(/[.!]+$/, "")}. Told the way ${s.after} works: ${s.op.charAt(0).toLowerCase() + s.op.slice(1)}`,
+    rule: s.rule, composition: s.comp, typography: s.type, color: s.color, motion: s.motion, sacrifice: s.sacrifice,
+    removal_test: "Remove the rule and the page should stop making sense; if it still works the same, the rule was decoration.",
+    palette: s.pals[0], fonts: { display: s.fonts[0].display, display_weight: s.fonts[0].dw, display_case: s.fonts[0].dc, body: s.fonts[0].body, mono: s.fonts[0].mono }, layout: s.layout,
+  }));
+}
+const srcLine = s => `- ${s.id}: ${s.name} (after ${s.after}). Operation: ${s.op} Rule: ${s.rule}`;
+function conceptRequest(far) {
+  const b = S.brief, d = D(), pl = PLACES.find(p => p.id === d.place);
+  return `You are an art director known for concepts that come from art, not from digital design trends.
+Create exactly 4 landing-page concepts for the product below by colliding THE TRUTH about the product with the ART SOURCES.
+
+PRODUCT
+Name: ${b.name}
+What it is: ${b.what}
+Audience: ${d.who || b.audience}
+Real items: ${b.items}
+Headline idea: ${b.headline}
+Primary action: ${b.cta}
+
+THE TRUTH (what nobody puts on the homepage)
+${d.truth.trim() || "(not given: find one yourself from the product description and state it inside each idea)"}
+
+CHARACTER
+- ${sliderWords().join(", ") || "not given"}
+- Atmosphere: ${pl ? `${pl.name} (${pl.desc})` : "not given"}
+- First five seconds: ${d.feel.join(", ") || "not given"}
+- Must never look like: ${d.never || "not given"}
+${meaningful(d.love) ? `- The designer loves (borrow principles only): ${d.love}` : ""}
+${meaningful(d.tired) ? `- The designer is tired of: ${d.tired}` : ""}
+
+ART SOURCES THE DESIGNER CHOSE (use their operations; never imitate the look of a specific artwork)
+${S.srcPicks.map(id => srcLine(srcById(id))).join("\n")}
+
+FAR SOURCE (concept 4 only, to force a surprising collision)
+${far ? srcLine(far) : "(none)"}
+
+Rules
+- Concepts 1–3 each start from one chosen source; at most one of them may combine two chosen sources. Concept 4 collides THE TRUTH with the far source.
+- The idea comes from the truth, not from a literal picture of the product. List the literal metaphors you avoided in "avoid_literal".
+- Each concept has one RULE: a single sentence that generates the whole page and can be checked against any element.
+- Avoid digital-trend devices: ${TREND_AVOID}.
+- No invented facts, numbers, testimonials or names.
+- Palette: six hex colors that suit the source; "fg" must have at least 4.5:1 contrast on "bg".
+- Fonts: real Google Fonts only.
+- Keep every text field to one or two sentences. Use the source ids exactly as given.
+
+Reply with only JSON in this shape:
+{"avoid_literal": ["..."], "concepts": [{"title": "", "sources": ["source id"], "idea": "", "rule": "", "composition": "", "typography": "", "color": "", "motion": "", "sacrifice": "", "removal_test": "", "palette": {"bg": "#", "fg": "#", "muted": "#", "line": "#", "accent": "#", "accent2": "#"}, "fonts": {"display": "", "display_weight": 400, "display_case": "none", "body": "", "mono": ""}, "layout": "left"}]}`;
+}
+function normalizeConcepts(raw, far) {
+  const list = Array.isArray(raw?.concepts) ? raw.concepts : Array.isArray(raw) ? raw : [];
+  return list.slice(0, 4).map((c, i) => {
+    let sources = (Array.isArray(c.sources) ? c.sources : []).map(x => String(x).toLowerCase()).filter(id => srcById(id));
+    if (!sources.length) sources = [i === 3 && far ? far.id : (S.srcPicks[i % S.srcPicks.length] || "albers")];
+    const s = srcById(sources[0]);
+    return { title: String(c.title || s.name), sources, idea: String(c.idea || ""), rule: String(c.rule || s.rule), composition: String(c.composition || s.comp),
+      typography: String(c.typography || s.type), color: String(c.color || s.color), motion: String(c.motion || s.motion), sacrifice: String(c.sacrifice || s.sacrifice),
+      removal_test: String(c.removal_test || "Remove the rule and the page should stop making sense."),
+      palette: fixPal(c.palette && typeof c.palette === "object" ? c.palette : s.pals[0]),
+      fonts: c.fonts?.display ? c.fonts : { display: s.fonts[0].display, display_weight: s.fonts[0].dw, display_case: s.fonts[0].dc, body: s.fonts[0].body, mono: s.fonts[0].mono },
+      layout: ["left", "center", "bottom", "top"].includes(c.layout) ? c.layout : s.layout };
+  }).filter(c => c.idea);
+}
+function useLocal(msg) { S.concepts = localConcepts(); S.conceptsBy = "local"; S.conceptKey = conceptKey(); S.conceptPick = null; S.conceptNope = []; S.sketches = {}; save(); if (msg) toast(msg); }
+
+let genCtl = null, genBusy = false; const sketchBusy = new Set(); let sketchQueue = [], sketchRunning = 0;
+async function generateConcepts() {
+  if (genBusy || !sample) return; genBusy = true; render();
+  const far = farSource(); genCtl = new AbortController();
+  try {
+    const raw = await sample.json(conceptRequest(far), { signal: genCtl.signal, cache: false });
+    const list = normalizeConcepts(raw, far); if (!list.length) throw { code: "invalid_json" };
+    S.concepts = list; S.conceptsBy = "claude"; S.avoidLiteral = Array.isArray(raw?.avoid_literal) ? raw.avoid_literal.map(String).slice(0, 8) : [];
+    S.conceptPick = null; S.conceptNope = []; S.sketches = {}; S.conceptKey = conceptKey(); save();
+  } catch (e) {
+    if (e?.code !== "cancelled") useLocal(e?.code === "not_granted" ? "Claude access wasn’t allowed — showing local drafts" : e?.code === "rate_limited" ? "Usage limit reached — showing local drafts" : "Couldn’t get concepts from Claude — showing local drafts");
+  } finally { genBusy = false; genCtl = null; render(); }
+}
+function sketchRequest(c) {
+  const b = B();
+  return `Draw the first screen (hero) of this landing-page concept as a static HTML and CSS sketch. It should read as an art piece first and a web page second.
+
+CONCEPT: ${c.title}
+Idea: ${c.idea}
+RULE (make it visible; someone should be able to guess the rule from the sketch): ${c.rule}
+Composition: ${c.composition}
+Typography: ${c.typography}
+Color: ${c.color}
+Motion: ${c.motion}
+Art source operations: ${c.sources.map(id => { const s = srcById(id); return `${s.name} (after ${s.after}): ${s.op}`; }).join(" | ")}
+Never imitate the look of a specific artwork. Avoid: ${TREND_AVOID}${S.avoidLiteral.length ? `; literal metaphors such as ${S.avoidLiteral.join(", ")}` : ""}.
+
+CONTENT
+Product name: ${b.name}
+Headline (you may tighten it): ${b.head}
+One supporting line: ${b.what}
+Primary action: ${b.cta}
+Real items you may use: ${b.items.join(", ")}
+
+TECHNICAL RULES (strict)
+- Reply with ONLY an HTML fragment: one <style> element followed by one <div class="sketch">…</div>. No markdown fences, no explanation.
+- .sketch is exactly 1200px wide and 750px tall, position: relative, overflow: hidden, background: var(--bg). Scope every selector under .sketch.
+- Colors: only var(--bg), var(--fg), var(--muted), var(--line), var(--accent), var(--accent2), color-mix() of them, or transparent.
+- Fonts: only var(--display), var(--body), var(--mono); the display weight is var(--dw).
+- Shapes with CSS or inline <svg>. No <script>, no event attributes, no <img>, no external URLs, no @import, no @font-face.
+- CSS @keyframes only if the concept's motion calls for it, inside @media (prefers-reduced-motion: no-preference).
+- Text readable (at least 4.5:1) and the primary action clearly visible.`;
+}
+function queueSketch(i) { if (!sample || sketchBusy.has(i)) return; sketchBusy.add(i); sketchQueue.push(i); pump(); }
+function pump() {
+  while (sketchRunning < 2 && sketchQueue.length) {
+    const i = sketchQueue.shift(), c = S.concepts[i]; if (!c) { sketchBusy.delete(i); continue; }
+    sketchRunning++; spinner(i);
+    sample(sketchRequest(c), { cache: false }).then(({ text }) => { if (S.concepts[i] === c && /class=["']?sketch/.test(text)) { S.sketches[i] = text; save(); } })
+      .catch(e => { if (e?.code === "not_granted" || e?.code === "sampling_disabled") { sample = null; sketchQueue.forEach(k => sketchBusy.delete(k)); sketchQueue = []; } })
+      .finally(() => { sketchRunning--; sketchBusy.delete(i); afterSketch(i); pump(); });
+  }
+}
+function spinner(i) { const el = document.querySelector(`.concept[data-i="${i}"] .spin`); if (el) el.hidden = !sketchBusy.has(i); }
+function afterSketch(i) {
+  if (cur() === "concepts") paintConcept(i);
+  else if ((cur() === "refine" || cur() === "prompt") && i === S.conceptPick) render();
+}
+function paintConcept(i) {
+  const card = document.querySelector(`.concept[data-i="${i}"]`); if (!card) return; const c = S.concepts[i], stage = card.querySelector(".stage");
+  mountStage(stage, sketchFor(c, i, fixPal(c.palette), conceptType(c)));
+  stage.insertAdjacentHTML("beforeend", `<span class="spin" ${sketchBusy.has(i) ? "" : "hidden"}>Sketching…</span>`);
+}
+function renderConcepts(main) {
+  if (S.conceptKey !== conceptKey()) { S.concepts = []; S.sketches = {}; S.conceptPick = null; S.conceptsBy = ""; }
+  if (!S.concepts.length && !genBusy) { if (sample) { generateConcepts(); return; } useLocal(); }
+  if (genBusy) {
+    main.innerHTML = `<div class="head"><div><h1>Colliding your truth with the art…</h1><p>Claude is writing four concepts, each with one rule that generates the page. This usually takes under a minute.</p></div></div>
+      <div class="loader"><div class="pulse" aria-hidden="true"></div><strong>Writing concepts</strong><span>Uses your own Claude account.</span><button class="btn" id="g-stop">Stop and use local drafts</button></div>`;
+    $("#g-stop").onclick = () => { genCtl?.abort(); useLocal(); };
+    return;
+  }
+  const local = S.conceptsBy === "local";
+  main.innerHTML = `<div class="head"><div><h1>Four concepts. Pick the one with a pulse.</h1><p>${local
+    ? "These are local drafts built straight from your sources. Open the studio inside Claude to get concepts and sketches written for your product."
+    : "Each concept has one rule. Claude draws a sketch for each; until it arrives you see a study of the source."}</p></div>
+    <div class="legend">${sample ? `<button class="btn" id="c-new">New concepts</button>` : ""}</div></div>
+    <div class="concepts">${S.concepts.map((c, i) => {
+      const picked = S.conceptPick === i, noped = S.conceptNope.includes(i);
+      return `<article class="concept ${picked ? "picked" : ""} ${noped ? "noped" : ""}" data-i="${i}">
+        <div class="stage static" role="img" aria-label="Sketch of ${esc(c.title)}"></div>
+        <div class="body"><h3>${esc(c.title)}</h3><div class="src">${c.sources.map(id => `<span>after ${esc(srcById(id).after)}</span>`).join("")}</div>
+        <p class="idea">${esc(c.idea)}</p><p class="rule">Rule: ${esc(c.rule)}</p>
+        <dl><dt>Composition</dt><dd>${esc(c.composition)}</dd><dt>Type</dt><dd>${esc(c.typography)}</dd><dt>Color</dt><dd>${esc(c.color)}</dd><dt>Motion</dt><dd>${esc(c.motion)}</dd><dt>Sacrifice</dt><dd>${esc(c.sacrifice)}</dd></dl>
+        <div class="acts"><button class="icon-btn pick ${picked ? "on" : ""}" data-act="pick" aria-pressed="${picked}">${picked ? "✓ This one" : "Pick this concept"}</button>
+        <button class="icon-btn nope ${noped ? "on" : ""}" data-act="nope" aria-pressed="${noped}">✕ No</button>
+        ${sample ? `<button class="icon-btn" data-act="redraw">Redraw sketch</button>` : ""}</div></div></article>`; }).join("")}</div>`;
+  if (sample && !local) S.concepts.forEach((_, i) => { if (!S.sketches[i]) queueSketch(i); });
+  S.concepts.forEach((_, i) => paintConcept(i));
+  main.querySelectorAll(".concept").forEach(card => card.addEventListener("click", e => {
+    const act = e.target.closest("[data-act]")?.dataset.act; if (!act) return; const i = +card.dataset.i;
+    if (act === "redraw") { delete S.sketches[i]; save(); queueSketch(i); paintConcept(i); return; }
+    if (act === "pick") { S.conceptPick = S.conceptPick === i ? null : i; S.conceptNope = S.conceptNope.filter(x => x !== i); S.refine = { pal: 0, type: 0, intensity: S.refine.intensity }; S.prompt = ""; }
+    if (act === "nope") { if (S.conceptNope.includes(i)) S.conceptNope = S.conceptNope.filter(x => x !== i); else { S.conceptNope.push(i); if (S.conceptPick === i) S.conceptPick = null; } }
+    save(); render();
+  }));
+  if ($("#c-new")) $("#c-new").onclick = () => { S.concepts = []; S.sketches = {}; S.conceptKey = ""; generateConcepts(); };
+}
+
+/* ---------------- step: refine ---------------- */
+const INTENSITY = [
+  { id: "quiet", t: "Quiet", d: "Generous space, one focal point per screen, motion only on interaction." },
+  { id: "measured", t: "Measured", d: "One focal point per screen; restrained motion that serves the rule." },
+  { id: "bold", t: "Bold", d: "The rule pushed to its extreme on the first screen; large scale and contrast." },
+];
+function varCard(kind, k, label) {
+  const on = S.refine[kind] === k;
+  return `<article class="opt ${on ? "picked" : ""}" data-k="${k}"><span class="badge">Selected</span><button class="stage" data-act="pick" aria-label="Use ${esc(label)}"></button>
+    <div class="meta"><div class="txt"><strong>${esc(label)}</strong></div><button class="icon-btn pick ${on ? "on" : ""}" data-act="pick" aria-pressed="${on}">${on ? "✓ Selected" : "Use"}</button></div></article>`;
+}
+function renderRefine(main) {
+  const c = concept(), i = S.conceptPick, pv = palVariants(c), tv = typeVariants(c);
+  main.innerHTML = `<div class="head"><div><h1>Refine inside the concept.</h1><p>Nothing here can break the rule; you're tuning how it sounds.${S.sketches[i] ? "" : " Previews use the source study until Claude's sketch arrives."}</p></div></div>
+    <div class="refine-top"><div class="stage static" id="r-main" role="img" aria-label="Current sketch"></div>
+      <div class="card"><div class="section-label">Concept</div><h2>${esc(c.title)}</h2><p class="lead" style="margin:6px 0 14px">${esc(c.idea)}</p>
+      <p style="margin:0 0 18px;padding:12px 14px;background:var(--surface);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;font-weight:600">Rule: ${esc(c.rule)}</p>
+      <div class="section-label">Intensity</div><div class="chipset" id="r-int">${INTENSITY.map(x => `<button data-v="${x.id}" aria-pressed="${S.refine.intensity === x.id}">${x.t}</button>`).join("")}</div>
+      <p class="note" id="r-int-d" style="margin-top:10px">${esc(INTENSITY.find(x => x.id === S.refine.intensity).d)}</p></div></div>
+    <h2 class="sub-title">Palette</h2><div class="grid three" id="r-pal">${pv.map((v, k) => varCard("pal", k, v.label)).join("")}</div>
+    <h2 class="sub-title">Type</h2><div class="grid three" id="r-type">${tv.map((v, k) => varCard("type", k, v.label)).join("")}</div>`;
+  mountStage($("#r-main"), sketchFor(c, i, curPal(), curType()));
+  pv.forEach((v, k) => mountStage(document.querySelector(`#r-pal [data-k="${k}"] .stage`), sketchFor(c, i, v.p, curType())));
+  tv.forEach((v, k) => mountStage(document.querySelector(`#r-type [data-k="${k}"] .stage`), sketchFor(c, i, curPal(), v.t)));
+  ["pal", "type"].forEach(kind => $("#r-" + kind).onclick = e => {
+    const card = e.target.closest(".opt"); if (!card || !e.target.closest("[data-act]")) return;
+    S.refine[kind] = +card.dataset.k; S.prompt = ""; save(); render();
   });
+  $("#r-int").onclick = e => { const b = e.target.closest("button"); if (!b) return; S.refine.intensity = b.dataset.v; S.prompt = ""; save();
+    $("#r-int").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x.dataset.v === b.dataset.v)); $("#r-int-d").textContent = INTENSITY.find(x => x.id === b.dataset.v).d; };
+  if (sample && S.conceptsBy === "claude" && !S.sketches[i]) queueSketch(i);
 }
 
-function renderRound(main, kind) {
-  const R = ROUNDS[kind], ids = ensureShown(kind), pool = R.pool(), used = usedIds(), map = {};
-  const fits = kind === "dir" && discoverTarget() ? new Set(pool.map(o => o.id).sort((x, y) => dirScore(y) - dirScore(x)).slice(0, 4)) : new Set();
-  const cards = ids.map(id => pool.find(o => o.id === id)).filter(Boolean).map(o => { const T = R.tok(o); map[o.id] = T; return optCard(kind, o, T, R.render(T, o), used.has(o.id) && o.id !== "brand", fits.has(o.id)); }).join("");
-  main.innerHTML = `<div class="head"><div><h1>${R.title}</h1><p>${R.sub}</p></div><div class="legend"><span><b>${pool.length}</b> in the library</span><span><b>${(S.nope[kind] || []).length}</b> rejected</span></div></div>
-    <div class="grid ${R.three ? "three" : ""}">${cards}</div>`;
-  bindCards(main, kind, map); save();
+/* ---------------- step: prompt ---------------- */
+function warnings() {
+  const d = D(), w = [], e = d.sliders.energy, it = S.refine.intensity;
+  if (!d.truth.trim()) w.push("No truth was given, so the concept leans on the product description. Add one in Discover for a sharper idea.");
+  if (typeof e === "number" && e >= 1 && it === "quiet") w.push("You described the product as loud but chose a quiet intensity. The prompt follows the intensity; change one if that's not what you want.");
+  if (typeof e === "number" && e <= -1 && it === "bold") w.push("You described the product as quiet but chose a bold intensity. Bold pushes the rule hard; check that's intended.");
+  if (curType().brand) w.push("Your brand fonts replace the concept's type, so the concept has to work through composition and color.");
+  if (S.conceptsBy === "local") w.push("This concept is a local draft. Inside Claude, concepts are written for your product and the prompt can be polished.");
+  return w;
 }
-
-function renderDens(main) {
-  const T = tokens(), used = usedIds();
-  const card = (kind, o, html) => optCard(kind, o, T, html, used.has(o.id));
-  main.innerHTML = `<div class="head"><div><h1>How busy, and how should it move?</h1><p>Density sets the ceiling for everything: sections, typefaces, colors and animations. Hover a motion sample to replay it.</p></div></div>
-    <h2 class="sub-title">Density</h2><div class="grid three" id="g-dens">${DENSITIES.map(d => card("dens", d, densHTML(d, T))).join("")}</div>
-    <h2 class="sub-title">Motion</h2><div class="grid three" id="g-motion">${MOTIONS.map(m => card("motion", m, motionHTML(m, T))).join("")}</div>`;
-  const map = {}; DENSITIES.concat(MOTIONS).forEach(o => map[o.id] = T);
-  bindCards($("#g-dens"), "dens", map); bindCards($("#g-motion"), "motion", map);
-  main.querySelectorAll("[data-motion]").forEach(el => {
-    const play = () => { const cls = el.dataset.motion; if (!cls || reduce) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
-      const cnt = el.querySelector("[data-count]"); if (cnt) { let n = 0; const iv = setInterval(() => { n += 6; cnt.textContent = String(Math.min(n, 48)).padStart(2, "0"); if (n >= 48) clearInterval(iv); }, 90); } };
-    el.closest(".opt").addEventListener("mouseenter", play); setTimeout(play, 200);
-  });
-}
-
-/* ---------------- prompt ---------------- */
-const fill = (s, p) => s.replace(/\{(\w+)\}/g, (_, k) => p[k] || "");
 function buildPrompt() {
-  const b = S.brief, T = tokens(), p = T.pal, f = T.pair, dir = T.dir;
-  const st = STRUCTURES.find(x => x.id === S.picks.struct) || STRUCTURES[4];
-  const dn = DENSITIES.find(x => x.id === S.picks.dens) || DENSITIES[1];
-  const mo = MOTIONS.find(x => x.id === S.picks.motion) || MOTIONS[0];
-  const sg = SIGS.find(x => x.id === T.sig);
-  const items = B().items.join(", ");
-  const secs = st.sections(dn.n).slice(0, dn.id === "ultra" ? 4 : dn.id === "minimal" ? 5 : 8).map((s, i) => `${i + 1}. ${fill(s, { name: b.name, items: items ? `items (${items})` : "items" })}`);
-  const nopes = [];
-  [["dir", DIRECTIONS, o => `the "${o.en}" look`], ["type", PAIRS, o => `${o.d} / ${o.b} typography`], ["pal", PALETTES, o => o.avoid], ["sig", SIGS, o => o.avoid], ["struct", STRUCTURES, o => `a "${o.id}" page structure`]]
-    .forEach(([k, list, txt]) => (S.nope[k] || []).forEach(id => { const o = list.find(x => x.id === id); if (o) nopes.push(txt(o)); }));
-  const accentUse = dn.id === "ultra" ? "the primary CTA and at most two other marks" : dn.id === "minimal" ? "the primary CTA, links on hover, and the signature element" : "CTAs, active states, the signature graphic and key highlights";
-  const keep = [];
-  if (S.picks.type === "brand") keep.push(`Brand fonts are FIXED: ${f.d} (display) and ${f.b} (body). Do not substitute them.`);
-  if (S.picks.pal === "brand") keep.push(`Brand colors are FIXED: ${b.keepColors}. Use them in the roles below; add only neutrals.`);
-  const lines = [
-    `Build a ${b.pageType || "landing page"} for ${b.name}${b.what ? ` — ${b.what.trim().replace(/[.!]+$/, "")}` : ""}.`,
-    `Direction: ${dir.en}, ${dn.id === "ultra" ? "ultra-minimal" : dn.id} density. NOT ${dir.not}.`,
-    b.audience ? `Audience: ${b.audience}.` : "",
-    ...discoverLines(),
-    "",
-    "DIRECTION (chosen visually by the designer — follow exactly)",
-    `- Movement: ${dir.en}`, `- Density: ${dn.id === "ultra" ? "ultra-minimal" : dn.id}`, `- Structure: ${st.id}`,
-    `- Signature: ${sg ? sg.id : T.sig}`, `- Motion: ${mo.id}`,
-    "",
-    "PAGE STRUCTURE", ...secs,
-    "",
-    "TYPOGRAPHY",
-    `- Display: "${f.d}" weight ${f.dw}, ${f.dc === "uppercase" ? "ALL CAPS" : "sentence case"}, ${dn.sizes} desktop / 40–48px mobile, letter-spacing ${f.dt}, line-height ${f.lh}.`,
-    `- Body: "${f.b}" 400, 16–18px, line-height 1.6, color ${p.mu} on ${p.bg}; measure ≤ 65ch.`,
-    `- Labels and data: "${f.m}" 500, 12px, uppercase, letter-spacing 0.14em, tabular figures.`,
-    `- Rule: ${f.rule}`,
-    "",
-    "COLOR",
-    `- Ground ${p.bg}, surface ${p.sf}, text ${p.tx}, muted ${p.mu}, hairlines ${p.ln}.`,
-    `- Primary accent ${p.ac} (text on it ${p.acfg}): used ONLY for ${accentUse}.`,
-    dn.id === "balanced" || dn.id === "maximal" ? `- Secondary accent ${p.ac2}: used ONLY inside the signature graphic and one highlight per section.` : `- No second accent color.`,
-    `- Text contrast at least 4.5:1 everywhere.`,
-    "",
-    "SIGNATURE",
-    `- ${sg ? fill(sg.spec, p) : "One typographic signature element."}`,
-    dn.id === "ultra" ? "- Keep it static: render once, no animation loop." : "",
-    "",
-    "LAYOUT",
-    `- Hero: ${LAYOUTS[T.layout]}`,
-    `- Grid: 12 columns, max-width 1200px, gutter 24px, side padding max(16px, 4vw). Spacing scale 4/8/16/24/40/64/104px; ${dn.id === "ultra" || dn.id === "minimal" ? "104px" : "64–104px"} between sections.`,
-    "",
-    "COMPONENTS",
-    `- Primary button: fill ${p.ac}, text ${p.acfg}, radius ${Math.min(T.r, 999) >= 999 ? "999px (pill)" : T.r + "px"}${T.sh !== "none" ? `, shadow ${T.sh}` : ", no shadow"}, padding 14px 22px, ${f.b} 600 15px; hover darkens 6%; active translateY(1px); focus-visible 2px ${p.ac} ring, offset 3px.`,
-    `- Secondary action: text link with 1px underline offset 4px; no second filled button in the hero.`,
-    `- Lists/rows: 1px ${p.ln} top border, 18–22px vertical padding, title left, meta right in the label face.`,
-    "",
-    "MOTION",
-    `- ${mo.spec}`, "- prefers-reduced-motion: no movement, show final states.",
-    "",
-    "DENSITY BUDGET (hard limits)", `- ${dn.budget}`,
-    keep.length ? "" : null, keep.length ? "BRAND CONSTRAINTS" : null, ...keep.map(k => `- ${k}`),
-    "",
-    "AVOID",
-    ...BASE_AVOID.map(a => `- ${a}`),
-    ...nopes.map(a => `- ${a} (the designer rejected it)`),
-    D().never ? `- anything that looks like ${D().never}` : null,
-    D().tired ? `- ${D().tired} (the designer is tired of it)` : null,
-    `- the most literal visual metaphor for ${b.name}`,
-    b.notes ? "" : null, b.notes ? "NOTES FROM THE DESIGNER" : null, b.notes ? `- ${b.notes}` : null,
-    "",
-    "OUTPUT: one self-contained HTML file, vanilla CSS/JS, Google Fonts only, works at 390px width with no horizontal scroll.",
+  const b = S.brief, d = D(), c = concept(), p = curPal(), t = curType(), it = INTENSITY.find(x => x.id === S.refine.intensity), pl = PLACES.find(x => x.id === d.place);
+  const srcs = c.sources.map(srcById), bp = brandPal(), bt = brandType(), sketch = S.sketches[S.conceptPick] && S.attachSketch ? S.sketches[S.conceptPick] : null;
+  const L = [
+    `Build a landing page for ${b.name}${b.what ? ` — ${b.what.trim().replace(/[.!]+$/, "")}` : ""}.`,
+    "It must read as an art piece first and a web page second, while staying usable.",
+    "", "THE TRUTH", `- ${d.truth.trim() || "(not stated; the concept below carries it)"}`,
+    "", `CONCEPT — ${c.title}`, `- ${c.idea}`,
+    "", "THE RULE (every element on the page obeys this)", `- ${c.rule}`,
+    "", "ART SOURCE (borrow the operation, never the look; no copies or recognizable reproductions)",
+    ...srcs.map(s => `- ${s.name}, after ${s.after}: ${s.op}`),
+    "", "HOW THE RULE SHOWS UP",
+    `- Composition: ${c.composition}`, `- Typography: ${c.typography}`, `- Color: ${c.color}`, `- Motion: ${c.motion}`,
+    "", "WHAT WE SACRIFICE", `- ${c.sacrifice}`,
+    "", "PAGE",
+    "- A hero and two to four further sections. Choose them from what the rule can express; every section must obey the rule.",
+    "- No generic SaaS sections. If a section cannot be made to obey the rule, cut it.",
+    "", "AUDIENCE", `- Who arrives: ${d.who || b.audience}`,
+    d.feel.length ? `- In the first five seconds they should feel: ${d.feel.map(x => x.toLowerCase()).join(" and ")}` : null,
+    sliderWords().length ? `- Character: ${sliderWords().join(", ")}` : null,
+    pl ? `- Atmosphere: like ${pl.name.toLowerCase()}, ${pl.desc.toLowerCase()} (a quality, never a picture)` : null,
+    "", "CONTENT", `- Headline: "${b.headline}"`, `- Primary action: "${b.cta}"`, `- Real items: ${b.items}`,
+    "- Invent nothing: no numbers, prices, testimonials or names that are not given. Use placeholders like [PRICE].",
+    b.notes ? `- Designer notes: ${b.notes}` : null,
+    "", "STARTING VALUES (the concept wins over any value here)",
+    `- Ground ${p.bg}, text ${p.fg}, muted ${p.muted}, lines ${p.line}, accent ${p.accent}, second accent ${p.accent2}. Text contrast at least 4.5:1.`,
+    `- Display "${t.display}" weight ${t.dw}${t.dc === "uppercase" ? ", uppercase" : ""}; body "${t.body}"; labels "${t.mono}". Google Fonts only.`,
+    `- Intensity: ${it.t.toLowerCase()}. ${it.d}`,
+    (bp || bt) ? "" : null, (bp || bt) ? "BRAND CONSTRAINTS (fixed)" : null,
+    bt ? `- Fonts are fixed: ${bt.display} for display, ${bt.body} for body.` : null,
+    bp ? `- Colors are fixed: ${b.keepColors}. Add only neutrals.` : null,
+    meaningful(d.love) ? "" : null, meaningful(d.love) ? "DESIGNER REFERENCE" : null,
+    meaningful(d.love) ? `- The designer loves ${d.love.trim()}. Borrow its principles (proportion, restraint, rhythm), never its look.` : null,
+    "", "REMOVAL TEST", `- ${c.removal_test}`,
+    "- If the rule can be removed and the page still works the same, the rule was decoration. Redo it until removing the rule breaks the page.",
+    "", "AVOID",
+    `- Digital-trend devices unless the rule demands them: ${TREND_AVOID}.`,
+    `- Literal metaphors for ${b.name}${S.avoidLiteral.length ? `: ${S.avoidLiteral.join(", ")}` : ""}.`,
+    "- Imitating the source artwork itself: no copies, pastiche or recognizable reproductions.",
+    d.never ? `- Anything that looks like ${d.never}.` : null,
+    meaningful(d.tired) ? `- ${d.tired.trim()} (the designer is tired of it).` : null,
+    ...S.srcNope.map(srcById).filter(Boolean).map(s => `- The operation of ${s.name.toLowerCase()} (the designer rejected it).`),
+    "- Marketing words: seamless, elevate, unlock, empower, revolutionize. No emoji.",
+    sketch ? "" : null, sketch ? "REFERENCE SKETCH (structure and mood of the hero only; rebuild it properly, do not copy its code)" : null,
+    sketch ? sanitize(sketch).slice(0, 9000) : null,
+    "", "OUTPUT", "- One self-contained HTML file, vanilla CSS and JS, Google Fonts only. Works at 390px width with no horizontal scroll. Respects prefers-reduced-motion. Visible focus states.",
   ];
-  return lines.filter(l => l !== null).join("\n").replace(/\n{3,}/g, "\n\n");
+  return L.filter(x => x !== null).join("\n").replace(/\n{3,}/g, "\n\n");
 }
-
-function discoverLines() {
-  const d = D(), pl = PLACES.find(p => p.id === d.place), words = sliderWords(), out = [];
-  if (words.length || pl || d.feel.length) {
-    out.push("", "BRAND CHARACTER (from the designer's discovery answers; use for tone, hierarchy and copy, never as literal imagery)");
-    if (words.length) out.push(`- Character: ${words.join(", ")}`);
-    if (pl) out.push(`- Atmosphere: like ${pl.name.toLowerCase()} — ${pl.desc.toLowerCase()} (a quality, not a picture)`);
-    if (d.feel.length) out.push(`- In the first five seconds the visitor should feel: ${d.feel.map(f => f.toLowerCase()).join(" and ")}`);
-  }
-  if (d.who || d.context || d.device || d.must) {
-    out.push("", "AUDIENCE MOMENT");
-    if (d.who) out.push(`- Who arrives: ${d.who}`);
-    if (d.context) out.push(`- Situation: ${d.context.toLowerCase()}`);
-    if (d.device) out.push(`- Device: ${d.device.toLowerCase()}${d.device === "Mostly mobile" ? " — design the 390px layout first" : ""}`);
-    if (d.must) out.push(`- The one action every section leads to: ${d.must}`);
-  }
-  if (d.thesis.trim()) out.push("", "DESIGN THESIS (every decision must serve this)", ...d.thesis.trim().split(/\n+/).map(l => `- ${l}`));
-  if (d.love.trim()) out.push("", "DESIGNER REFERENCE", `- The designer loves: ${d.love.trim()}. Borrow its principles (proportion, restraint, rhythm), never its look.`);
-  return out;
-}
-
-/* ---------------- step: result ---------------- */
-let sample = null, abortCtl = null, downloads = null;
-if (window.claude?.use) {
-  window.claude.use("sample").then(s => { sample = s; if (STEPS[S.step].id === "result") render(); }).catch(() => {});
-  window.claude.use("downloads").then(d => { downloads = d; if (STEPS[S.step].id === "result") render(); }).catch(() => {});
-}
-
-function renderResult(main) {
-  if (!S.prompt || S.promptSource === "local") { S.prompt = buildPrompt(); S.promptSource = "local"; }
-  const T = tokens(), name = s => s ? s : "—";
-  const st = STRUCTURES.find(x => x.id === S.picks.struct), dn = DENSITIES.find(x => x.id === S.picks.dens), mo = MOTIONS.find(x => x.id === S.picks.motion), sg = SIGS.find(x => x.id === T.sig);
-  const chip = (i, l, v) => `<button class="chip" data-go="${i}"><small>${l}</small><strong>${esc(name(v))}</strong></button>`;
-  const nopeCount = Object.values(S.nope).reduce((a, v) => a + (v || []).length, 0);
-  main.innerHTML = `<div class="head"><div><h1>This is your combination.</h1><p>Every pick on one page. Click a card to change that round. The prompt is ready below.</p></div></div>
+let polCtl = null;
+function renderPrompt(main) {
+  if (!S.prompt) { S.prompt = buildPrompt(); S.promptSource = "local"; }
+  const c = concept(), w = warnings(), hasSketch = !!S.sketches[S.conceptPick];
+  main.innerHTML = `<div class="head"><div><h1>${esc(c.title)}</h1><p>Rule: ${esc(c.rule)}</p></div></div>
   <div class="result">
-    <div class="final-stage" data-tok id="final">${heroHTML(T)}</div>
-    <div class="chips">${chip(1, "Thesis", D().thesis ? D().thesis.split(/(?<=\.)\s/)[0] : "")}${chip(2, "Direction", T.dir.fa)}${chip(3, "Type", `${T.pair.d} + ${T.pair.b}`)}${chip(4, "Color", T.pal.fa)}${chip(5, "Structure", st?.fa)}${chip(6, "Signature", sg?.fa)}${chip(7, "Density & motion", dn && mo ? `${dn.fa} · ${mo.fa}` : "")}
-      <div class="chip nopes"><small>Rejected</small><strong>${nopeCount ? `${nopeCount}, listed under AVOID` : "None"}</strong></div></div>
-    <div class="prompt-box">
-      <div class="prompt-tools">
-        ${sample ? `<button class="btn accent" id="refine">${S.promptSource === "claude" ? "Polish again with Claude" : "Polish with Claude"}</button><button class="btn" id="stop" hidden>Stop</button>` : ""}
-        <button class="btn primary" id="copy">Copy prompt</button>
-        ${downloads ? `<button class="btn" id="dl">Download .md</button>` : ""}
-        <button class="btn" id="keep">Save to history</button>
-        ${S.promptSource === "claude" ? `<button class="btn" id="reset">Back to base version</button>` : ""}
-        <span class="note" id="pnote">${S.promptSource === "claude" ? "Polished by Claude. You can edit it directly." : sample ? "Base version built from your picks. Claude can complete section copy and details for your product while keeping every chosen value (uses your own Claude account)." : "Built from your picks. Copy it and give it to Claude."}</span>
-      </div>
-      <label for="ptext" class="section-label">Prompt</label>
-      <textarea class="prompt" id="ptext" spellcheck="false">${esc(S.prompt)}</textarea>
+    <div class="stage static" id="p-main" role="img" aria-label="Final sketch"></div>
+    ${w.length ? `<div class="warn"><strong>Before you use it</strong>${w.map(x => `<span>${esc(x)}</span>`).join("")}</div>` : ""}
+    <div class="prompt-tools">
+      ${sample ? `<button class="btn accent" id="p-pol">${S.promptSource === "claude" ? "Polish again" : "Polish with Claude"}</button><button class="btn" id="p-stop" hidden>Stop</button>` : ""}
+      <button class="btn primary" id="p-copy">Copy prompt</button>
+      ${downloads ? `<button class="btn" id="p-dl">Download .md</button>` : ""}
+      <button class="btn" id="p-keep">Save to history</button>
+      ${S.promptSource !== "local" ? `<button class="btn" id="p-reset">Rebuild from picks</button>` : ""}
+      ${hasSketch ? `<label class="check" style="margin:0"><input type="checkbox" id="p-att" ${S.attachSketch ? "checked" : ""}> Attach sketch as reference</label>` : ""}
+      <span class="note" id="p-note">${S.promptSource === "claude" ? "Polished by Claude. Edit freely." : sample ? "Base version from your picks. Polishing resolves contradictions in favor of the rule and makes each section specific (uses your Claude account)." : "Built from your picks. Copy it and give it to Claude."}</span>
     </div>
+    <label for="p-text" class="section-label">Prompt</label><textarea class="prompt" id="p-text" spellcheck="false">${esc(S.prompt)}</textarea>
     <div><h2 class="sub-title">History</h2><div class="history" id="hist"></div></div>
   </div>`;
-  $("#final")._T = T; mountAll(main);
-  main.querySelectorAll("[data-go]").forEach(c => c.onclick = () => go(+c.dataset.go));
-  const ta = $("#ptext"); ta.oninput = () => { S.prompt = ta.value; if (S.promptSource === "local") S.promptSource = "edited"; save(); };
-  $("#copy").onclick = () => copy(ta.value, ta);
-  $("#keep").onclick = () => { history.unshift({ ts: Date.now(), name: S.brief.name, title: `${T.dir.fa} · ${T.pal.fa}`, prompt: ta.value, picks: { ...S.picks } }); history = history.slice(0, 30); store.set("history", history); toast("Saved to history"); renderHistory(); };
-  if ($("#dl")) $("#dl").onclick = async () => { try { await downloads.save({ filename: `${(S.brief.name || "design").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-prompt.md`, data: ta.value }); toast("Saved"); } catch (e) { if (e?.code !== "declined") toast("Download isn’t available here — use Copy"); } };
-  if ($("#reset")) $("#reset").onclick = () => { S.prompt = buildPrompt(); S.promptSource = "local"; save(); render(); };
-  if ($("#refine")) $("#refine").onclick = refine;
+  mountStage($("#p-main"), sketchFor(c, S.conceptPick, curPal(), curType()));
+  const ta = $("#p-text"); ta.oninput = () => { S.prompt = ta.value; S.promptSource = "edited"; save(); };
+  $("#p-copy").onclick = () => copy(ta.value, ta);
+  $("#p-keep").onclick = () => { history.unshift({ ts: Date.now(), name: S.brief.name, title: c.title, prompt: ta.value }); history = history.slice(0, 30); store.set("history", history); toast("Saved to history"); renderHistory(); };
+  if ($("#p-dl")) $("#p-dl").onclick = async () => { try { await downloads.save({ filename: `${(S.brief.name || "design").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-prompt.md`, data: ta.value }); toast("Saved"); } catch (e) { if (e?.code !== "declined") toast("Download isn’t available here — use Copy"); } };
+  if ($("#p-reset")) $("#p-reset").onclick = () => { S.prompt = buildPrompt(); S.promptSource = "local"; save(); render(); };
+  if ($("#p-att")) $("#p-att").onchange = e => { S.attachSketch = e.target.checked; if (S.promptSource === "local") S.prompt = buildPrompt(); save(); render(); };
+  if ($("#p-pol")) $("#p-pol").onclick = polish;
   renderHistory();
 }
+async function polish() {
+  const ta = $("#p-text"), note = $("#p-note"), btn = $("#p-pol"), stop = $("#p-stop"), draft = ta.value;
+  polCtl = new AbortController(); btn.disabled = true; stop.hidden = false; stop.onclick = () => polCtl?.abort(); note.textContent = "Claude is thinking…";
+  const instr = `You are a senior art director. Rewrite the DRAFT below into the final design prompt for an AI that builds web pages.
 
-async function refine() {
-  const ta = $("#ptext"), note = $("#pnote"), btn = $("#refine"), stop = $("#stop");
-  const draft = ta.value;
-  abortCtl = new AbortController(); btn.disabled = true; stop.hidden = false; note.textContent = "Claude is thinking…";
-  stop.onclick = () => abortCtl?.abort();
-  const instr = `You are a senior art director. A designer picked every visual choice below by looking at live samples. Rewrite the DRAFT into the final design prompt for an AI that builds web pages.
-
-Rules:
-- Keep EVERY concrete value exactly: font names and weights, hex colors, px sizes, ms durations, cubic-bezier curves, radii, the density budget and the section order. Never swap a choice for one you like better.
-- Fill the gaps at the same precision: for each PAGE STRUCTURE section, give one line of real content direction using the product's own words; add component states and responsive behaviour where missing.
-- Stay inside the density budget. If the density is minimal or ultra-minimal, remove anything decorative that is not required.
-- Do not invent facts: no numbers, prices, testimonials, logos or names that the brief does not contain. Use placeholders like [PRICE].
-- Use BRAND CHARACTER, AUDIENCE MOMENT and DESIGN THESIS to decide copy tone, what comes first, and what to cut. Never turn the character or atmosphere into literal imagery.
-- Keep the same section headings in the same order. English only. Output ONLY the prompt, no preface.
-
-BRIEF
-Product: ${S.brief.name}
-What it is: ${S.brief.what}
-Audience: ${S.brief.audience}
-Real items: ${S.brief.items}
-Headline idea: ${S.brief.headline}
-Primary action: ${S.brief.cta}
-${S.brief.notes ? "Designer notes: " + S.brief.notes : ""}
+1. First, silently check the draft for contradictions (for example a loud character with a quiet intensity, or a value that breaks the rule). Resolve every contradiction in favor of THE RULE.
+2. Keep the truth, concept, rule, art source and every concrete value (hex colors, font names, weights) unless it breaks the rule.
+3. Make PAGE specific: name the hero and two to four sections in the product's own words, and for each say exactly how it obeys the rule.
+4. Make HOW THE RULE SHOWS UP buildable: concrete composition, type sizes, spacing and motion decisions.
+5. Do not add business sections the rule cannot justify. Do not invent facts, numbers or names.
+6. Never describe imitating a specific artwork. Keep AVOID and the removal test, and keep any REFERENCE SKETCH as is.
+7. English only. Keep the section headings. Output only the prompt.
 
 DRAFT
-${draft}`;
+${draft.slice(0, 50000)}`;
   try {
-    const { text, truncated } = await sample(instr, { signal: abortCtl.signal, cache: false, onText: ({ text }) => { ta.value = text; note.textContent = "Claude is writing…"; } });
-    ta.value = text; S.prompt = text; S.promptSource = "claude"; save();
-    note.textContent = truncated ? "The answer was cut short; try again." : "Done. You can edit it directly.";
-    render();
+    const { text, truncated } = await sample(instr, { signal: polCtl.signal, cache: false, onText: ({ text }) => { ta.value = text; note.textContent = "Claude is writing…"; } });
+    S.prompt = text; S.promptSource = "claude"; save(); note.textContent = truncated ? "The answer was cut short; try again." : "Polished by Claude. Edit freely."; render();
   } catch (e) {
-    if (e?.text) ta.value = e.text; else ta.value = draft;
-    const msg = { cancelled: "Stopped.", not_granted: "Claude access wasn’t allowed — copy the base version instead.", rate_limited: "Usage limit reached for now — try again later.", refused: "Claude declined this request; the base version is back.", session_expired: "Please sign in again." }[e?.code] || "The connection dropped — try again.";
-    note.textContent = msg; if (e?.code === "refused") ta.value = draft;
-    if (e?.code === "not_granted" || e?.code === "sampling_disabled") { sample = null; }
-  } finally { btn.disabled = false; stop.hidden = true; abortCtl = null; }
+    ta.value = e?.code === "refused" || !e?.text ? draft : e.text;
+    note.textContent = { cancelled: "Stopped.", not_granted: "Claude access wasn’t allowed — copy the base version.", rate_limited: "Usage limit reached — try later." }[e?.code] || "The connection dropped — try again.";
+  } finally { btn.disabled = false; stop.hidden = true; polCtl = null; }
 }
-
 function renderHistory() {
   const box = $("#hist"); if (!box) return;
-  if (!history.length) { box.innerHTML = `<div class="empty">Nothing saved yet. Prompts you keep appear here, and options you used before are marked in later rounds.</div>`; return; }
+  if (!history.length) { box.innerHTML = `<div class="empty">Nothing saved yet.</div>`; return; }
   box.innerHTML = history.map((h, i) => `<div class="hist-item"><div class="t"><strong>${esc(h.name)} — ${esc(h.title)}</strong><span>${new Date(h.ts).toLocaleString("en-GB")}</span></div>
-    <button class="icon-btn" data-h="copy" data-i="${i}">Copy</button><button class="icon-btn" data-h="load" data-i="${i}">Open</button><button class="icon-btn" data-h="del" data-i="${i}" aria-label="Delete">✕</button></div>`).join("");
+    <button class="icon-btn" data-h="copy" data-i="${i}">Copy</button><button class="icon-btn" data-h="del" data-i="${i}" aria-label="Delete">✕</button></div>`).join("");
   box.onclick = e => { const b = e.target.closest("[data-h]"); if (!b) return; const h = history[+b.dataset.i];
     if (b.dataset.h === "copy") copy(h.prompt);
-    if (b.dataset.h === "load") { S.prompt = h.prompt; S.promptSource = "claude"; S.picks = { ...h.picks }; save(); render(); toast("Loaded"); }
     if (b.dataset.h === "del") { history.splice(+b.dataset.i, 1); store.set("history", history); renderHistory(); } };
 }
 
 /* ---------------- chrome ---------------- */
 function copy(text, ta) {
-  const done = () => toast("Copied");
-  try { navigator.clipboard.writeText(text).then(done, () => { if (ta) { ta.select(); toast("Text selected — press Ctrl/⌘+C"); } }); }
-  catch { if (ta) { ta.select(); toast("Text selected — press Ctrl/⌘+C"); } }
+  const fallback = () => { if (ta) { ta.select(); toast("Text selected — press Ctrl/⌘+C"); } };
+  try { navigator.clipboard.writeText(text).then(() => toast("Copied"), fallback); } catch { fallback(); }
 }
-let toastT; function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 2200); }
-
-const needs = { dir: "dir", type: "type", pal: "pal", struct: "struct", sig: "sig" };
-function stepDone(i) {
+let toastT; function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 2400); }
+function done(i) {
   const id = STEPS[i].id;
   if (id === "brief") return !!S.brief.name.trim();
   if (id === "discover") return true;
-  if (id === "dens") return !!(S.picks.dens && S.picks.motion);
-  if (id === "result") return false;
-  return !!S.picks[needs[id]];
+  if (id === "sources") return S.srcPicks.length > 0;
+  if (id === "concepts") return S.conceptPick !== null && !!S.concepts[S.conceptPick];
+  if (id === "refine") return !!concept();
+  return false;
 }
-function go(i) { if (i < 0 || i >= STEPS.length || i > S.maxStep + 1) return; if (STEPS[S.step].id === "result" || i !== S.step) { if (S.promptSource === "local" || !S.prompt) S.prompt = ""; } S.step = i; S.maxStep = Math.max(S.maxStep, i); save(); render(); scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" }); }
-
+function reachable(i) { for (let k = 0; k < i; k++) if (!done(k)) return false; return true; }
+function go(i) { if (i < 0 || i >= STEPS.length || !reachable(i)) return; S.step = i; S.maxStep = Math.max(S.maxStep, i); save(); render(); scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" }); }
 function renderSteps() {
-  $("#steps").innerHTML = STEPS.map((s, i) => `<button class="step-pill ${i === S.step ? "on" : ""} ${stepDone(i) ? "done" : ""}" data-i="${i}" ${i > S.maxStep + 1 ? "disabled" : ""} ${i === S.step ? 'aria-current="step"' : ""}><span class="n">${String(i).padStart(2, "0")}</span>${s.fa}</button>`).join("");
+  $("#steps").innerHTML = STEPS.map((s, i) => `<button class="step-pill ${i === S.step ? "on" : ""} ${done(i) ? "done" : ""}" data-i="${i}" ${reachable(i) ? "" : "disabled"} ${i === S.step ? 'aria-current="step"' : ""}><span class="n">${String(i).padStart(2, "0")}</span>${s.t}</button>`).join("");
   $("#steps").querySelectorAll("button").forEach(b => b.onclick = () => go(+b.dataset.i));
-  $("#steps .on")?.scrollIntoView({ block: "nearest", inline: "center" });
 }
 function renderBar() {
-  const id = STEPS[S.step].id, done = stepDone(S.step), isRound = !!ROUNDS[id];
-  const status = id === "brief" ? "A product name is enough to start." : id === "discover" ? "Answer what you like and skip the rest." : id === "result" ? "Go back and change any round whenever you like." : id === "dens" ? (done ? "Great — on to the prompt." : "Pick one density and one motion style.") : done ? "Picked. You can move to the next round." : "Click the sample you like.";
+  const id = cur(), ok = done(S.step);
+  const status = { brief: "A product name is enough to start.", discover: "The truth matters most; skip anything else.", sources: ok ? "Pick up to three, then continue." : "Pick at least one source.",
+    concepts: genBusy ? "Writing concepts…" : ok ? "Picked. Refine it next." : "Pick the concept with a pulse.", refine: "Tune palette, type and intensity.", prompt: "Copy the prompt, or go back and change anything." }[id];
   $("#bar").innerHTML = `<div class="wrap"><span class="status">${status}</span>
     ${S.step > 0 ? `<button class="btn" id="b-back">← Back</button>` : ""}
-    ${isRound ? `<button class="btn" id="b-shuf">More options</button>` : ""}
-    ${isRound && !done ? `<button class="btn" id="b-rand">Surprise me</button>` : ""}
-    ${id === "result" ? `<button class="btn" id="b-new">Start over</button>` : `<button class="btn primary" id="b-next" ${done ? "" : "disabled"}>${STEPS[S.step + 1].id === "result" ? "Build prompt" : "Next"} →</button>`}</div>`;
+    ${id === "sources" ? `<button class="btn" id="b-more">More sources</button>` : ""}
+    ${id === "prompt" ? `<button class="btn" id="b-new">Start over</button>` : `<button class="btn primary" id="b-next" ${ok ? "" : "disabled"}>${STEPS[S.step + 1].id === "prompt" ? "Build prompt" : "Next"} →</button>`}</div>`;
   $("#b-back") && ($("#b-back").onclick = () => go(S.step - 1));
   $("#b-next") && ($("#b-next").onclick = () => go(S.step + 1));
-  $("#b-shuf") && ($("#b-shuf").onclick = () => reshuffle(id));
-  $("#b-rand") && ($("#b-rand").onclick = () => { const ids = (S.shown[id] || []).filter(x => !(S.nope[id] || []).includes(x)); S.picks[id] = shuffle(ids)[0]; save(); render(); });
-  $("#b-new") && ($("#b-new").onclick = () => { const brief = S.brief, disc = S.discover; S = fresh(); S.brief = brief; S.discover = disc; S.step = 2; S.maxStep = 2; save(); render(); });
+  $("#b-more") && ($("#b-more").onclick = moreSources);
+  $("#b-new") && ($("#b-new").onclick = () => { const brief = S.brief, disc = S.discover; S = fresh(); S.brief = brief; S.discover = disc; S.step = 1; S.maxStep = 1; save(); render(); });
 }
-
 function render() {
-  const main = $("#main"), id = STEPS[S.step].id;
+  if (!reachable(S.step)) S.step = 0;
+  const main = $("#main");
   renderSteps();
-  if (id === "brief") renderBrief(main);
-  else if (id === "discover") renderDiscover(main);
-  else if (ROUNDS[id]) renderRound(main, id);
-  else if (id === "dens") renderDens(main);
-  else renderResult(main);
+  ({ brief: renderBrief, discover: renderDiscover, sources: renderSources, concepts: renderConcepts, refine: renderRefine, prompt: renderPrompt })[cur()](main);
   renderBar();
 }
-
 loadFont("Hanken Grotesk"); loadFont("Geist Mono");
 render();
 })();
